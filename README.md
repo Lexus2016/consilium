@@ -101,6 +101,23 @@ A consultant **advises, never acts**:
 - The preamble repeats this constraint in-prompt, so the advisor is told not to
   create, modify, or delete files even if it could.
 
+## Use it from your agent (hub setup)
+
+`consult` is just a shell command, so any agent that can run a shell can be the
+hub. To make an agent reach for it on its own, install the guidance into that
+agent's own instruction mechanism:
+
+| Hub | Mechanism |
+|---|---|
+| Claude Code | the `consult-peer` skill (`clients/claude-code/`) |
+| Codex | a block in `~/.codex/AGENTS.md` |
+| OpenCode | a block in `~/.config/opencode/AGENTS.md` |
+| Antigravity (`agy`) | a block in `~/.gemini/GEMINI.md` |
+
+Step-by-step per agent: [`clients/README.md`](clients/README.md). The shared
+playbook — when to consult, how to build context, how to read the reply —
+is [`docs/consulting-guide.md`](docs/consulting-guide.md).
+
 ## Roadmap
 
 1. ~~Scaffold the project (repo, README, license, design doc).~~ Done.

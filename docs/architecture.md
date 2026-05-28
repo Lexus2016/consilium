@@ -38,13 +38,16 @@ one CLI grammar and dispatch table:
 - `bin/consult.ps1` — native PowerShell port (pwsh 7+) for Windows cmd/PowerShell
   where bash is absent.
 
-**Layer 2 — per-client ergonomic wrappers.**
-- Claude Code → a **skill** (`consult-peer`): when to seek a second opinion,
-  how to build context (via `cheap extract` to a temp file), how to analyze the
-  reply and continue.
-- `agy` → a **plugin** exposing a `/consult` command.
-- `opencode` → a **plugin** or agent definition.
-- `codex` → a **plugin** or config instruction + shell tool.
+**Layer 2 — per-client ergonomic wrappers** (verified mechanisms; see `clients/`).
+All share one playbook (`docs/consulting-guide.md`); each agent stores it where it
+reads instructions:
+- Claude Code → a **skill** (`clients/claude-code/consult-peer`): when to seek a
+  second opinion, how to build context, how to read the reply. Built.
+- `codex` → the **Hub instruction block** in `~/.codex/AGENTS.md` (codex reads
+  `AGENTS.md`). A codex plugin / MCP server is a heavier alternative.
+- `opencode` → the block in `~/.config/opencode/AGENTS.md`, or an `opencode agent`.
+- `agy` → the block in `~/.gemini/GEMINI.md` (agy is Gemini-based), or a command
+  under `~/.gemini/commands/`, or `agy plugin import` of a Claude/Gemini plugin.
 
 A deeper Phase-2 path exists via **MCP** (codex can *be* an MCP server, opencode
 manages MCP/ACP). More structured but heavier. The CLI adapter is the universal
