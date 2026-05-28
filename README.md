@@ -127,15 +127,22 @@ Both adapters share the same command grammar, options, and dispatch table.
 
 ## Installation
 
-No packaged installer yet (see the roadmap). For now, run the adapter directly
-or put it on your `PATH`:
+**macOS / Linux / WSL / Git Bash** — put `consult` on your `PATH`:
 
 ```sh
-# macOS / Linux / WSL / Git Bash
-./bin/consult --list
+./install.sh            # symlinks bin/consult into ~/.local/bin
+# ./install.sh --copy   # copy instead of symlink
+consult --list
+```
 
-# Windows (PowerShell 7+)
-pwsh ./bin/consult.ps1 --list
+Set `CONSILIUM_BIN` to install into a different directory.
+
+**Windows (native PowerShell 7+)** — no shell installer yet. Add the repo's
+`bin` directory to your `PATH`, or define a wrapper in your PowerShell profile:
+
+```powershell
+function consult { pwsh -NoProfile -File C:\path\to\consilium\bin\consult.ps1 @args }
+consult --list
 ```
 
 ## Contributing
