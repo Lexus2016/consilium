@@ -53,7 +53,7 @@ A deeper Phase-2 path exists via **MCP** (codex can *be* an MCP server, opencode
 manages MCP/ACP). More structured but heavier. The CLI adapter is the universal
 base because it is the only thing all four share with zero extra processes.
 
-## `consult` command spec (to implement)
+## `consult` command spec
 
 ```
 consult <agent> [options] -- <question...>
@@ -73,6 +73,7 @@ env:
   CONSILIUM_LOG_DIR   transcript dir (default ~/.consilium/log)
   CONSILIUM_TIMEOUT   per-call timeout if `timeout`/`gtimeout` present
   CONSILIUM_MAX_DEPTH consultation-chain depth limit (default 3; loop guard)
+  CONSILIUM_LOG_KEEP  keep only the newest N transcripts (default 200; 0 = all)
 ```
 
 **Dispatch table:**
@@ -103,9 +104,20 @@ stdin to avoid TTY hangs — codex reads stdin in addition to its prompt arg.
 
 ## Safety defaults
 
-A consultant **advises, never acts**. Read-only by default (codex
-`--sandbox read-only`; never pass `--dangerously-skip-permissions`). All file
-edits stay with the hub. The advisor preamble reinforces this in-prompt.
+A consultant **advises, never acts** — but how strongly that is *enforced*
+differs per agent, so be honest about it:
+
+| Agent | What keeps it from editing files |
+|---|---|
+| codex | enforced: runs under `--sandbox read-only` |
+| claude | does not edit in `-p` answer mode without granted permission |
+| agy | does not edit in `-p` answer mode without granted permission (its `--sandbox` flag stalls headless calls, so we don't pass it) |
+| opencode | no read-only flag exists; relies on its default behaviour + the preamble |
+
+Guaranteed for all four: consilium never passes
+`--dangerously-skip-permissions` (or any equivalent), and the advisor preamble
+tells the advisor to advise only — do not create, modify, or delete files. All
+real edits stay with the hub.
 
 To stop runaway `A -> B -> A` consultation loops, each call increments
 `CONSILIUM_CALL_DEPTH` in the advisor's environment and aborts (exit 3) once it
@@ -135,14 +147,17 @@ reaches `CONSILIUM_MAX_DEPTH` (default 3).
 
 ## Roadmap
 
-1. Scaffold local project (done: dir, git, README, LICENSE, .gitignore, docs).
-2. Implement `bin/consult` (the universal adapter).
-3. Verify a live cross-agent call (trivial question + timeout; record who is
-   authenticated / working).
-4. Claude Code skill `consult-peer`.
-5. Multilingual docs (README EN/UK/RU) + real-world examples.
-6. Per-client adapters (agy / opencode / codex plugins) for full symmetry.
-7. `install.sh` + publish to GitHub.
+1. ~~Scaffold local project.~~ Done.
+2. ~~`bin/consult` (the universal adapter)~~ + a native PowerShell port
+   (`bin/consult.ps1`). Done.
+3. ~~Verify a live cross-agent call.~~ Done (codex, opencode, agy).
+4. ~~Claude Code skill `consult-peer`~~ + per-agent hub setup (`clients/`). Done.
+5. ~~Multilingual docs (README EN/UK/RU) + real-world examples.~~ Done.
+6. ~~Per-client hub setup via each tool's instruction file~~ (skill / `AGENTS.md`
+   / `GEMINI.md`). Done. Native plugins remain optional.
+7. ~~`install.sh` (Unix) + publish to GitHub.~~ Done. A native Windows installer
+   and a tagged release remain.
+8. Open: minimal tests for both adapters; `install.ps1` for Windows.
 
 ## Resuming in a fresh session
 

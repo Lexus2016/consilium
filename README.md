@@ -44,7 +44,10 @@ consult codex -- "Is it safe to do it this way?"
 
 ## A few things worth knowing
 
-- The other AI **only advises** — it never edits, creates, or deletes your files.
+- The other AI is there to **advise, not act** — consilium never lets it skip
+  safety checks, and it answers without changing your files.
+- The assistants you want to ask must be **installed and signed in** first. Run
+  `consult --list` to see which are ready.
 - It looks at the same project folder you're in, so it understands your work.
 - Ask a *different* AI than the one you're using — a fresh pair of eyes helps more.
 - It's a real request to another AI, so use it for things that matter, not trifles.

@@ -47,7 +47,7 @@ consult codex -- "Is a read-only sandbox enough to make a consultant safe?"
    permission to run the command — you approve** (once, or always).
 4. The advisor's answer prints; Claude summarises it and says whether it agrees.
 5. **You decide:** accept, push back, or ask a different agent.
-6. The exchange is saved to `~/.consilium/log/<timestamp>-<agent>.md`.
+6. The exchange is saved to `~/.consilium/log/<timestamp>-<agent>-<pid>.md`.
 
 ## What the advisor actually sees
 
@@ -78,8 +78,9 @@ Garbage in, garbage out.
 
 ## Keep in mind
 
-- **You stay in control.** The advisor only returns text — it never edits, creates,
-  or deletes files. Every change stays with you and Claude.
+- **You stay in control.** The advisor returns text and answers without changing
+  your files — codex is sandboxed read-only, and consilium never lets any advisor
+  skip safety checks. Every change stays with you and Claude.
 - **Use an independent advisor.** Pick a different provider than Claude — `codex`
   (OpenAI) or `agy` (Gemini). A second Claude mostly agrees with itself.
 - **It costs a real model call** on the advisor's account, so use it for decisions

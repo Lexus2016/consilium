@@ -59,14 +59,15 @@ consult agy   --code .               -- "Spot the bug in the retry/backoff loop"
 
 What comes back is one opinion. Weigh it:
 
-- The advisor **cannot act** — it does not touch files, run commands, or change
-  state. Every edit stays with you.
+- The advisor is meant to **advise, not act** — it returns text, and every edit
+  stays with you. (codex is sandboxed read-only; the others answer without editing
+  unless you grant permission, and the preamble tells them to advise only.)
 - If it disagrees with you, decide on the merits. Do not apply a suggestion you
   cannot justify yourself.
 - If it agrees, that is signal but not proof. Two models can share a blind spot.
 
-The exchange is saved to `~/.consilium/log/<timestamp>-<agent>.md` so you can
-revisit the reasoning later.
+The exchange is saved to `~/.consilium/log/<timestamp>-<agent>-<pid>.md` so you
+can revisit the reasoning later.
 
 ## Etiquette
 

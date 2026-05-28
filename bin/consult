@@ -48,6 +48,7 @@ env:
   CONSILIUM_LOG_DIR   transcript directory (default: ~/.consilium/log)
   CONSILIUM_TIMEOUT   per-call timeout, if 'timeout'/'gtimeout' is available
   CONSILIUM_MAX_DEPTH consultation-chain depth limit (default: 3)
+  CONSILIUM_LOG_KEEP  keep only the newest N transcripts (default: 200; 0 = all)
 
 examples:
   $PROG codex -- "Is a read-only sandbox enough to make a consultant safe?"
@@ -95,11 +96,11 @@ while [ "$#" -gt 0 ]; do
     -h|--help)    usage; exit 0 ;;
     --version)    printf 'consilium %s %s\n' "$PROG" "$VERSION"; exit 0 ;;
     --list)       list_agents; exit 0 ;;
-    --context)    context_file="${2:-}"; shift 2 ;;
+    --context)    [ "$#" -ge 2 ] || { err "option --context needs a value"; exit 2; }; context_file="$2"; shift 2 ;;
     --context=*)  context_file="${1#*=}"; shift ;;
-    --code)       code_dir="${2:-}"; shift 2 ;;
+    --code)       [ "$#" -ge 2 ] || { err "option --code needs a value"; exit 2; }; code_dir="$2"; shift 2 ;;
     --code=*)     code_dir="${1#*=}"; shift ;;
-    --model)      model="${2:-}"; shift 2 ;;
+    --model)      [ "$#" -ge 2 ] || { err "option --model needs a value"; exit 2; }; model="$2"; shift 2 ;;
     --model=*)    model="${1#*=}"; shift ;;
     --continue)   do_continue=1; shift ;;
     --raw)        raw=1; shift ;;
@@ -208,13 +209,18 @@ esac
 
 runner=()
 if [ -n "${CONSILIUM_TIMEOUT:-}" ]; then
-  if command -v timeout >/dev/null 2>&1; then
-    runner=(timeout "$CONSILIUM_TIMEOUT")
-  elif command -v gtimeout >/dev/null 2>&1; then
-    runner=(gtimeout "$CONSILIUM_TIMEOUT")
-  else
-    warn "CONSILIUM_TIMEOUT set but no 'timeout'/'gtimeout' found; running without it"
-  fi
+  case "$CONSILIUM_TIMEOUT" in
+    *[!0-9]*|"") warn "CONSILIUM_TIMEOUT must be a whole number of seconds; ignoring" ;;
+    *)
+      if command -v timeout >/dev/null 2>&1; then
+        runner=(timeout "$CONSILIUM_TIMEOUT")
+      elif command -v gtimeout >/dev/null 2>&1; then
+        runner=(gtimeout "$CONSILIUM_TIMEOUT")
+      else
+        warn "CONSILIUM_TIMEOUT set but no 'timeout'/'gtimeout' found; running without it"
+      fi
+      ;;
+  esac
 fi
 
 # ----- run, print, and log ---------------------------------------------------
@@ -249,5 +255,12 @@ set -e
 
 rm -f "$tmp"
 printf '\n[consilium] transcript: %s\n' "$logfile" >&2
+
+# prune old transcripts so the log directory doesn't grow forever
+keep="${CONSILIUM_LOG_KEEP:-200}"
+case "$keep" in *[!0-9]*|"") keep=200 ;; esac
+if [ "$keep" -gt 0 ]; then
+  ls -t "$LOG_DIR"/*.md 2>/dev/null | tail -n +"$((keep + 1))" | while IFS= read -r old; do rm -f "$old"; done
+fi
 
 exit "$status"

@@ -7,8 +7,9 @@ mechanism.
 
 Every agent needs the same two steps:
 
-1. **Install the command** — `./install.sh` from the repo root (Windows: see the
-   main README). After this, `consult --list` works in any shell.
+1. **Install the command** — `./install.sh` from the repo root (on native
+   Windows, see [Windows](#windows) below). After this, `consult --list` works in
+   any shell.
 2. **Install the guidance** — store the **Hub instruction block** (bottom of this
    file, canonical copy in [`../docs/consulting-guide.md`](../docs/consulting-guide.md))
    where your agent reads its instructions, so it reaches for `consult` on its own.
@@ -71,6 +72,20 @@ instruction-file path above is the simplest and does not depend on a plugin
 format.
 
 **Use.** Ask `agy` to get a second opinion; it runs `consult` as a shell command.
+
+---
+
+## Windows
+
+There is no shell installer for native Windows yet. Two options:
+
+- **WSL or Git Bash** — `./install.sh` works there just like on macOS/Linux.
+- **Native PowerShell 7+** — use `bin/consult.ps1`. Add the repo's `bin` folder to
+  your `PATH`, or put this in your PowerShell profile:
+
+  ```powershell
+  function consult { pwsh -NoProfile -File C:\path\to\consilium\bin\consult.ps1 @args }
+  ```
 
 ---
 

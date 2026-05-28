@@ -55,6 +55,7 @@ env:
   CONSILIUM_LOG_DIR   transcript directory (default: ~/.consilium/log)
   CONSILIUM_TIMEOUT   per-call timeout in seconds (0 or unset = no timeout)
   CONSILIUM_MAX_DEPTH consultation-chain depth limit (default: 3)
+  CONSILIUM_LOG_KEEP  keep only the newest N transcripts (default: 200; 0 = all)
 
 examples:
   $Prog codex -- "Is a read-only sandbox enough to make a consultant safe?"
@@ -284,6 +285,15 @@ if (-not $noLog) {
     Set-Content -LiteralPath $logfile -Value $lines -Encoding UTF8
     [Console]::Error.WriteLine('')
     [Console]::Error.WriteLine("[consilium] transcript: $logfile")
+
+    # prune old transcripts so the log directory doesn't grow forever
+    $keep = 200
+    if ($env:CONSILIUM_LOG_KEEP) { $parsedKeep = 0; if ([int]::TryParse($env:CONSILIUM_LOG_KEEP, [ref]$parsedKeep)) { $keep = $parsedKeep } }
+    if ($keep -gt 0) {
+        Get-ChildItem -LiteralPath $LogDir -Filter '*.md' -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -Skip $keep |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+    }
 }
 
 exit $res.Code
