@@ -38,7 +38,10 @@ If you are Claude, prefer `codex` or `agy`. If you are Codex, prefer `claude`.
 
 ## Build a sharp question
 
-The advisor has none of your context. Give it exactly what it needs, no more:
+The advisor has none of your *conversation*, but it runs in your current working
+directory — so it already shares your project's cwd-scoped context (the files
+here, and the same `tqmemory` project memory if it has that configured). Don't
+re-explain the layout; give it the specific slice it needs, no more:
 
 - Write the relevant slice of context to a temp file and pass `--context FILE`.
   Keep it tight — the relevant function and its callers, not the whole repo.

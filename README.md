@@ -84,7 +84,12 @@ options:
 env:
   CONSILIUM_LOG_DIR   transcript directory (default: ~/.consilium/log)
   CONSILIUM_TIMEOUT   per-call timeout, if `timeout`/`gtimeout` is available
+  CONSILIUM_MAX_DEPTH consultation-chain depth limit (default: 3; loop guard)
 ```
+
+The advisor runs in your current working directory, so it shares the same
+cwd-scoped context as you — project files and, if the advisor has it configured,
+the same `tqmemory` project memory.
 
 Unless you pass `--raw`, the question is wrapped with a short preamble that tells
 the advisor it is a peer being consulted: give honest, direct analysis, and

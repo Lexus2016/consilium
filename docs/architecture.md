@@ -72,6 +72,7 @@ options:
 env:
   CONSILIUM_LOG_DIR   transcript dir (default ~/.consilium/log)
   CONSILIUM_TIMEOUT   per-call timeout if `timeout`/`gtimeout` present
+  CONSILIUM_MAX_DEPTH consultation-chain depth limit (default 3; loop guard)
 ```
 
 **Dispatch table:**
@@ -89,7 +90,12 @@ AI advisor consulted by another agent. Give honest, direct analysis. Advice only
 — do not modify, create, or delete files."*
 
 **Behavior:** answer printed to stdout; a transcript (prompt + answer) saved to
-`~/.consilium/log/<ts>-<agent>.md` unless `--no-log`. The bash adapter targets
+`~/.consilium/log/<ts>-<agent>-<pid>.md` unless `--no-log` (the PID suffix avoids
+same-second filename collisions). The advisor is spawned in the hub's working
+directory, so it shares cwd-scoped context: `tqmemory` keys memory by cwd, and
+project `AGENTS.md`/`GEMINI.md`/`CLAUDE.md` resolve from there. The PowerShell port
+sets the child's working directory explicitly, since .NET's `CurrentDirectory`
+does not track `$PWD`. The bash adapter targets
 macOS bash 3.2 (avoid empty-array expansion under `set -u`) and stays portable to
 Linux/WSL/Git Bash. The PowerShell port targets pwsh 7+ and implements the
 timeout natively (no external `timeout`/`gtimeout`). Both close the advisor's
@@ -100,6 +106,10 @@ stdin to avoid TTY hangs — codex reads stdin in addition to its prompt arg.
 A consultant **advises, never acts**. Read-only by default (codex
 `--sandbox read-only`; never pass `--dangerously-skip-permissions`). All file
 edits stay with the hub. The advisor preamble reinforces this in-prompt.
+
+To stop runaway `A -> B -> A` consultation loops, each call increments
+`CONSILIUM_CALL_DEPTH` in the advisor's environment and aborts (exit 3) once it
+reaches `CONSILIUM_MAX_DEPTH` (default 3).
 
 ## Decisions log
 
@@ -115,6 +125,13 @@ edits stay with the hub. The advisor preamble reinforces this in-prompt.
   macOS / Linux / WSL / Git Bash; a native PowerShell port (`bin/consult.ps1`,
   pwsh 7+) covers Windows cmd/PowerShell. Two implementations, one shared CLI
   grammar and dispatch table — kept in sync by hand.
+- **Hardening from the first dogfood (we consulted `agy` about consilium):** a
+  recursion depth guard (`CONSILIUM_CALL_DEPTH` / `CONSILIUM_MAX_DEPTH`),
+  PID-suffixed transcript names, and spawning the advisor in the hub's working
+  directory so cwd-scoped context (notably `tqmemory`) is shared. Rejected from
+  the same review: `--map` / code-stripping (those belong to the hub building
+  context at Layer 2, not the transport) and dropping `--model`/`--continue`
+  (cheap, useful pass-throughs).
 
 ## Roadmap
 

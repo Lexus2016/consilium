@@ -47,6 +47,7 @@ options:
 env:
   CONSILIUM_LOG_DIR   transcript directory (default: ~/.consilium/log)
   CONSILIUM_TIMEOUT   per-call timeout, if 'timeout'/'gtimeout' is available
+  CONSILIUM_MAX_DEPTH consultation-chain depth limit (default: 3)
 
 examples:
   $PROG codex -- "Is a read-only sandbox enough to make a consultant safe?"
@@ -136,6 +137,19 @@ if ! command -v "$agent" >/dev/null 2>&1; then
   err "agent '$agent' is not installed or not on PATH"; exit 127
 fi
 
+# ----- recursion guard -------------------------------------------------------
+# Stop A -> B -> A consultation loops from burning tokens. Each call bumps
+# CONSILIUM_CALL_DEPTH in the environment the advisor inherits; abort past max.
+depth="${CONSILIUM_CALL_DEPTH:-0}"
+max_depth="${CONSILIUM_MAX_DEPTH:-3}"
+case "$depth" in ""|*[!0-9]*) depth=0 ;; esac
+case "$max_depth" in ""|*[!0-9]*) max_depth=3 ;; esac
+if [ "$depth" -ge "$max_depth" ]; then
+  err "consultation depth limit reached (depth=$depth, max=$max_depth); aborting to prevent a consult loop"
+  exit 3
+fi
+export CONSILIUM_CALL_DEPTH=$((depth + 1))
+
 # ----- prompt assembly -------------------------------------------------------
 
 if [ "$raw" -eq 1 ]; then
@@ -204,6 +218,9 @@ if [ -n "${CONSILIUM_TIMEOUT:-}" ]; then
 fi
 
 # ----- run, print, and log ---------------------------------------------------
+# The advisor is spawned as a child process, so it inherits THIS working
+# directory. That is deliberate: it shares our cwd-scoped context — tqmemory keys
+# memory by cwd, and project AGENTS.md/GEMINI.md/CLAUDE.md resolve from here.
 
 status=0
 
@@ -214,7 +231,7 @@ fi
 
 mkdir -p "$LOG_DIR"
 ts="$(date +%Y%m%d-%H%M%S)"
-logfile="$LOG_DIR/${ts}-${agent}.md"
+logfile="$LOG_DIR/${ts}-${agent}-$$.md"
 tmp="$(mktemp "${TMPDIR:-/tmp}/consilium.XXXXXX")"
 
 set +e

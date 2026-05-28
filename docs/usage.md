@@ -51,8 +51,10 @@ consult codex -- "Is a read-only sandbox enough to make a consultant safe?"
 
 ## What the advisor actually sees
 
-The advisor has **none** of your Claude conversation, memory, or other files. It
-decides only on what the hub hands it:
+The advisor has **none of your Claude conversation**. It does run in your current
+working directory, so it shares cwd-scoped context — the project files here, and
+the same `tqmemory` project memory if it has that configured. For the specific
+question, it decides on what the hub hands it:
 
 ```
 <fixed preamble: "you are a peer advisor… advice only, don't touch files">

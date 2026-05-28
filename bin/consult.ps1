@@ -54,6 +54,7 @@ options:
 env:
   CONSILIUM_LOG_DIR   transcript directory (default: ~/.consilium/log)
   CONSILIUM_TIMEOUT   per-call timeout in seconds (0 or unset = no timeout)
+  CONSILIUM_MAX_DEPTH consultation-chain depth limit (default: 3)
 
 examples:
   $Prog codex -- "Is a read-only sandbox enough to make a consultant safe?"
@@ -130,6 +131,19 @@ if ([string]::IsNullOrEmpty($question)) { Write-Err 'no question given'; Show-Us
 if ($contextFile -and -not (Test-Path -LiteralPath $contextFile -PathType Leaf))      { Write-Err "context file not found: $contextFile"; exit 2 }
 if ($codeDir     -and -not (Test-Path -LiteralPath $codeDir     -PathType Container)) { Write-Err "code dir not found: $codeDir"; exit 2 }
 if (-not (Get-Command $agent -CommandType Application -ErrorAction SilentlyContinue)) { Write-Err "agent '$agent' is not installed or not on PATH"; exit 127 }
+
+# ----- recursion guard -------------------------------------------------------
+# Stop A -> B -> A consultation loops from burning tokens. Each call bumps
+# CONSILIUM_CALL_DEPTH in the environment the advisor inherits; abort past max.
+$depth = 0
+if ($env:CONSILIUM_CALL_DEPTH) { [void][int]::TryParse($env:CONSILIUM_CALL_DEPTH, [ref]$depth) }
+$maxDepth = 3
+if ($env:CONSILIUM_MAX_DEPTH) { $parsedMax = 0; if ([int]::TryParse($env:CONSILIUM_MAX_DEPTH, [ref]$parsedMax)) { $maxDepth = $parsedMax } }
+if ($depth -ge $maxDepth) {
+    Write-Err "consultation depth limit reached (depth=$depth, max=$maxDepth); aborting to prevent a consult loop"
+    exit 3
+}
+$env:CONSILIUM_CALL_DEPTH = ($depth + 1)
 
 # ----- prompt assembly -------------------------------------------------------
 
@@ -208,6 +222,10 @@ function Invoke-Agent {
     $psi.RedirectStandardError  = $true
     $psi.RedirectStandardInput  = $true
     $psi.UseShellExecute        = $false
+    # Run the advisor in OUR working directory so it shares the same cwd-scoped
+    # context (e.g. tqmemory keys memory by cwd, project AGENTS.md/GEMINI.md).
+    # PowerShell's $PWD is not [Environment]::CurrentDirectory, so set it explicitly.
+    $psi.WorkingDirectory       = (Get-Location).Path
 
     $p = [System.Diagnostics.Process]::new()
     $p.StartInfo = $psi
@@ -248,7 +266,7 @@ if ($res.TimedOut) { Write-WarnMsg "timed out after ${timeoutSec}s" }
 if (-not $noLog) {
     New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
     $ts      = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $logfile = Join-Path $LogDir "$ts-$agent.md"
+    $logfile = Join-Path $LogDir "$ts-$agent-$PID.md"
     $fence   = '```'
     $lines   = @(
         "# consilium consult — $agent — $ts",
