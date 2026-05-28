@@ -116,7 +116,8 @@ agent's own instruction mechanism:
 
 Step-by-step per agent: [`clients/README.md`](clients/README.md). The shared
 playbook — when to consult, how to build context, how to read the reply —
-is [`docs/consulting-guide.md`](docs/consulting-guide.md).
+is [`docs/consulting-guide.md`](docs/consulting-guide.md). If you are a human
+driving Claude Code, see [`docs/usage.md`](docs/usage.md).
 
 ## Roadmap
 
