@@ -1,179 +1,61 @@
 # consilium
 
-> Cross-agent consultation bus for AI coding CLIs.
+**English** · [Українська](README.uk.md) · [Русский](README.ru.md)
 
-**consilium** lets one AI coding agent — your *hub* — ask a different agent for a
-second opinion, mid-task, without you leaving the tool you already work in. The
-hub poses a question in headless mode, gets back plain text, and folds the answer
-into its work. It is symmetric: Claude Code, Antigravity (`agy`), OpenCode and
-Codex can each be the hub *or* the advisor.
+> Ask another AI for a second opinion — from inside the AI you already work with.
 
-The everyday command is `consult`:
+When you work with an AI coding assistant, it sometimes misses things or talks
+itself into a bad idea. **consilium** lets it quietly ask a *different* AI to check
+the work, then carry on. The other AI only gives an opinion — it never changes
+your files.
 
-```sh
-consult codex    -- "Is a read-only sandbox enough to make a consultant safe?"
-consult opencode --context design.md -- "Any race conditions in this plan?"
-consult claude   --code . -- "Spot bugs in the auth flow"
-```
+> Early work, but it already works day to day.
 
-> **Status: early work in progress.** The bash adapter (`bin/consult`) works and
-> has been live-tested against codex, opencode and agy. The native PowerShell port
-> (`bin/consult.ps1`) is verified on PowerShell 7 — the only piece not yet
-> exercised on real Windows is the `.cmd`-shim routing. Packaging, the Claude Code
-> skill, and per-client wrappers are still ahead. The single source of truth for
-> the design is [`docs/architecture.md`](docs/architecture.md). See
-> [Roadmap](#roadmap) for the full picture.
+## Install it — just ask your AI
 
-## Why a second agent
+Copy this and paste it to your AI assistant (Claude Code, Codex, OpenCode, or
+Antigravity):
 
-One model has blind spots. It anchors on its first reading of a problem, misses
-the edge case it didn't think to look for, and agrees with itself. A second agent
-— a different provider, a fresh context, no stake in the first answer — catches
-what the first one missed. consilium turns that second opinion into one command
-you can run from inside whatever agent you already have open.
+> Install consilium from https://github.com/Lexus2016/consilium for me: clone it,
+> run its `install.sh`, and set yourself up to ask other AIs for a second opinion
+> the way its `clients/README.md` describes.
 
-This is not a router or an ensemble. The hub stays in charge. The advisor only
-talks.
+It does the rest. You only need the assistants you actually want to ask.
 
-## How it works
+## Use it — just ask, in plain words
 
-Three layers, each thin:
+Tell your assistant things like:
 
-- **Layer 0 — the shared primitive.** Every supported CLI already has a
-  "prompt in, text out" headless mode. Nothing to build here; consilium stands on
-  top of it.
-- **Layer 1 — `consult`, the universal adapter.** A single bash script
-  (`bin/consult`, installed to `~/.local/bin`) that puts one interface over all
-  four agents. Because it is just a shell command, *any* agent can call it — that
-  is what makes the bus symmetric, with no daemon and no background process.
-- **Layer 2 — per-client ergonomics.** Optional wrappers that make `consult`
-  feel native in each host: a Claude Code skill, an `agy` plugin, an OpenCode
-  plugin/agent, a Codex plugin or shell-tool config.
+> "Get a second opinion from codex on this before we continue."
 
-## Supported agents
+> "Ask another AI whether this change is safe."
 
-| Agent | Command | Headless call | Continue a session |
-|---|---|---|---|
-| Claude Code | `claude` | `claude -p "Q"` | `claude -c -p` |
-| Antigravity | `agy` | `agy -p "Q"` | `agy -c -p` |
-| OpenCode | `opencode` | `opencode run "Q"` | `opencode run -c` |
-| Codex | `codex` | `codex exec "Q"` | `codex resume --last` |
+> "I'm stuck — check this with agy."
 
-You only need the agents you actually want to consult installed and
-authenticated. `consult --list` will show which ones are present.
+It asks the other AI, shows you the answer, and tells you what it thinks. **You
+always decide what to do next.**
 
-## The `consult` command
+If you'd rather do it yourself, it's one line in your terminal — the name of who
+you're asking, then your question:
 
 ```
-consult <agent> [options] -- <question...>
-consult <agent> [options] "<question>"
-
-agents:  claude | agy | opencode | codex
-
-options:
-  --context FILE   inline a context file into the prompt
-  --code DIR       give the advisor a working directory for code context
-  --model NAME     override the model
-  --continue       continue the advisor's previous session
-  --raw            send the question as-is, with no advisor preamble
-  --no-log         do not write a transcript
-  --list           list agents and whether each is installed
-  -h, --help
-  --version
-
-env:
-  CONSILIUM_LOG_DIR   transcript directory (default: ~/.consilium/log)
-  CONSILIUM_TIMEOUT   per-call timeout, if `timeout`/`gtimeout` is available
-  CONSILIUM_MAX_DEPTH consultation-chain depth limit (default: 3; loop guard)
+consult codex -- "Is it safe to do it this way?"
 ```
 
-The advisor runs in your current working directory, so it shares the same
-cwd-scoped context as you — project files and, if the advisor has it configured,
-the same `tqmemory` project memory.
+## A few things worth knowing
 
-Unless you pass `--raw`, the question is wrapped with a short preamble that tells
-the advisor it is a peer being consulted: give honest, direct analysis, and
-advise only — do not touch files. The answer prints to stdout and, by default, a
-transcript of the exchange is saved under `~/.consilium/log`.
+- The other AI **only advises** — it never edits, creates, or deletes your files.
+- It looks at the same project folder you're in, so it understands your work.
+- Ask a *different* AI than the one you're using — a fresh pair of eyes helps more.
+- It's a real request to another AI, so use it for things that matter, not trifles.
+- Don't put passwords or secret keys in your question.
 
-## Safety
+## Want more?
 
-A consultant **advises, never acts**:
-
-- Read-only by default. Codex runs under `--sandbox read-only`; consilium never
-  passes `--dangerously-skip-permissions` or any equivalent.
-- All file edits stay with the hub. The advisor returns text, nothing else.
-- The preamble repeats this constraint in-prompt, so the advisor is told not to
-  create, modify, or delete files even if it could.
-
-## Use it from your agent (hub setup)
-
-`consult` is just a shell command, so any agent that can run a shell can be the
-hub. To make an agent reach for it on its own, install the guidance into that
-agent's own instruction mechanism:
-
-| Hub | Mechanism |
-|---|---|
-| Claude Code | the `consult-peer` skill (`clients/claude-code/`) |
-| Codex | a block in `~/.codex/AGENTS.md` |
-| OpenCode | a block in `~/.config/opencode/AGENTS.md` |
-| Antigravity (`agy`) | a block in `~/.gemini/GEMINI.md` |
-
-Step-by-step per agent: [`clients/README.md`](clients/README.md). The shared
-playbook — when to consult, how to build context, how to read the reply —
-is [`docs/consulting-guide.md`](docs/consulting-guide.md). If you are a human
-driving Claude Code, see [`docs/usage.md`](docs/usage.md).
-
-## Roadmap
-
-1. ~~Scaffold the project (repo, README, license, design doc).~~ Done.
-2. Implement `bin/consult` — the universal adapter.
-3. Verify a live cross-agent call (trivial question, with a timeout).
-4. Claude Code skill: `consult-peer`.
-5. Multilingual docs (README in EN / UK / RU) and real-world examples.
-6. Per-client adapters (`agy` / `opencode` / `codex` plugins) for full symmetry.
-7. `install.sh` and a tagged release.
-
-A heavier Phase-2 path via MCP is possible (Codex can *be* an MCP server,
-OpenCode manages MCP/ACP). The CLI adapter comes first because it is the one
-thing all four agents share with zero extra processes.
-
-## Platform support
-
-| OS | Adapter |
-|---|---|
-| macOS, Linux | `bin/consult` (bash 3.2+) |
-| Windows via WSL or Git Bash | `bin/consult` |
-| Windows, native cmd / PowerShell | `bin/consult.ps1` (PowerShell 7+) |
-
-Both adapters share the same command grammar, options, and dispatch table.
-
-## Installation
-
-**macOS / Linux / WSL / Git Bash** — put `consult` on your `PATH`:
-
-```sh
-./install.sh            # symlinks bin/consult into ~/.local/bin
-# ./install.sh --copy   # copy instead of symlink
-consult --list
-```
-
-Set `CONSILIUM_BIN` to install into a different directory.
-
-**Windows (native PowerShell 7+)** — no shell installer yet. Add the repo's
-`bin` directory to your `PATH`, or define a wrapper in your PowerShell profile:
-
-```powershell
-function consult { pwsh -NoProfile -File C:\path\to\consilium\bin\consult.ps1 @args }
-consult --list
-```
-
-## Contributing
-
-The project is local-first and pre-release; the design may still shift. If you
-want to follow along or weigh in, open an issue. Please read
-[`docs/architecture.md`](docs/architecture.md) first — it is the source of truth
-for scope and decisions.
+- Everyday examples: [`docs/examples.md`](docs/examples.md)
+- A short guide for people: [`docs/usage.md`](docs/usage.md)
+- The how-to your assistant follows: [`docs/consulting-guide.md`](docs/consulting-guide.md)
+- How it's built, for the curious: [`docs/architecture.md`](docs/architecture.md)
 
 ## License
 
