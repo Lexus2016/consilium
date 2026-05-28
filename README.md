@@ -16,10 +16,12 @@ consult opencode --context design.md -- "Any race conditions in this plan?"
 consult claude   --code . -- "Spot bugs in the auth flow"
 ```
 
-> **Status: early work in progress.** The command interface above is the design
-> target, not a shipped feature yet. The single source of truth for the design is
-> [`docs/architecture.md`](docs/architecture.md) — read it first when resuming
-> work. See [Roadmap](#roadmap) for what exists today.
+> **Status: early work in progress.** The bash adapter (`bin/consult`) works and
+> has been live-tested against codex, opencode and agy. A native PowerShell port
+> for Windows (`bin/consult.ps1`) exists but is not yet verified. Packaging, the
+> Claude Code skill, and per-client wrappers are still ahead. The single source of
+> truth for the design is [`docs/architecture.md`](docs/architecture.md). See
+> [Roadmap](#roadmap) for the full picture.
 
 ## Why a second agent
 
@@ -112,10 +114,28 @@ A heavier Phase-2 path via MCP is possible (Codex can *be* an MCP server,
 OpenCode manages MCP/ACP). The CLI adapter comes first because it is the one
 thing all four agents share with zero extra processes.
 
+## Platform support
+
+| OS | Adapter |
+|---|---|
+| macOS, Linux | `bin/consult` (bash 3.2+) |
+| Windows via WSL or Git Bash | `bin/consult` |
+| Windows, native cmd / PowerShell | `bin/consult.ps1` (PowerShell 7+) |
+
+Both adapters share the same command grammar, options, and dispatch table.
+
 ## Installation
 
-Not packaged yet — see the roadmap. Once `bin/consult` lands, install will be a
-one-liner that drops the script into `~/.local/bin`.
+No packaged installer yet (see the roadmap). For now, run the adapter directly
+or put it on your `PATH`:
+
+```sh
+# macOS / Linux / WSL / Git Bash
+./bin/consult --list
+
+# Windows (PowerShell 7+)
+pwsh ./bin/consult.ps1 --list
+```
 
 ## Contributing
 

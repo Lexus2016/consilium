@@ -29,10 +29,14 @@ sandbox / approval controls (codex: `--sandbox read-only -a never`).
 **Layer 0 — common primitive (already exists).** Every agent has a
 "prompt in → text out" headless mode. This is the foundation; nothing to build.
 
-**Layer 1 — the universal adapter: `consult`** (`bin/consult`, a single bash
-script installed to `~/.local/bin`). One interface over all four agents. Because
-it is just a shell command, *any* agent can call it — that is what makes the
-system symmetric without any daemons.
+**Layer 1 — the universal adapter: `consult`.** One interface over all four
+agents. Because it is just a shell command, *any* agent can call it — that is
+what makes the system symmetric without any daemons. Two implementations share
+one CLI grammar and dispatch table:
+- `bin/consult` — bash (macOS bash 3.2+, Linux, and Windows via WSL/Git Bash),
+  installed to `~/.local/bin`.
+- `bin/consult.ps1` — native PowerShell port (pwsh 7+) for Windows cmd/PowerShell
+  where bash is absent.
 
 **Layer 2 — per-client ergonomic wrappers.**
 - Claude Code → a **skill** (`consult-peer`): when to seek a second opinion,
@@ -82,8 +86,11 @@ AI advisor consulted by another agent. Give honest, direct analysis. Advice only
 — do not modify, create, or delete files."*
 
 **Behavior:** answer printed to stdout; a transcript (prompt + answer) saved to
-`~/.consilium/log/<ts>-<agent>.md` unless `--no-log`. Target shell is macOS bash
-3.2 — avoid empty-array expansion under `set -u`.
+`~/.consilium/log/<ts>-<agent>.md` unless `--no-log`. The bash adapter targets
+macOS bash 3.2 (avoid empty-array expansion under `set -u`) and stays portable to
+Linux/WSL/Git Bash. The PowerShell port targets pwsh 7+ and implements the
+timeout natively (no external `timeout`/`gtimeout`). Both close the advisor's
+stdin to avoid TTY hangs — codex reads stdin in addition to its prompt arg.
 
 ## Safety defaults
 
@@ -101,6 +108,10 @@ edits stay with the hub. The advisor preamble reinforces this in-prompt.
 - **Memory scoping:** `tqmemory` keys memory by cwd. Project memory must be
   written from a session whose cwd is this directory, so it stays separate from
   other projects. Do not write consilium notes from unrelated cwds.
+- **Cross-platform target (Windows / Linux / macOS):** the bash adapter covers
+  macOS / Linux / WSL / Git Bash; a native PowerShell port (`bin/consult.ps1`,
+  pwsh 7+) covers Windows cmd/PowerShell. Two implementations, one shared CLI
+  grammar and dispatch table — kept in sync by hand.
 
 ## Roadmap
 
