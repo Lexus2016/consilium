@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+#
+# consult — the universal adapter for consilium, a cross-agent consultation bus.
+#
+# Ask one AI coding CLI (the advisor) a question in headless mode, print the
+# answer, and save a transcript. Symmetric: any agent can call this, so any
+# agent can be the hub or the advisor.
+#
+# Target shell: macOS bash 3.2. No associative arrays; empty arrays are expanded
+# with the ${arr[@]+...} guard so `set -u` does not trip on them.
+
+set -euo pipefail
+
+VERSION="0.1.0"
+PROG="consult"
+
+AGENTS="claude agy opencode codex"
+PREAMBLE="You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files."
+
+LOG_DIR="${CONSILIUM_LOG_DIR:-$HOME/.consilium/log}"
+
+err()  { printf '%s: %s\n' "$PROG" "$*" >&2; }
+warn() { printf '%s: warning: %s\n' "$PROG" "$*" >&2; }
+
+usage() {
+  cat <<EOF
+$PROG — consult another AI coding agent for a second opinion.
+
+usage:
+  $PROG <agent> [options] -- <question...>
+  $PROG <agent> [options] "<question>"
+
+agents:
+  claude | agy | opencode | codex
+
+options:
+  --context FILE   inline a context file into the prompt
+  --code DIR       give the advisor a working directory for code context
+  --model NAME     override the model
+  --continue       continue the advisor's previous session
+  --raw            send the question as-is (no advisor preamble)
+  --no-log         do not write a transcript
+  --list           list agents and whether each is installed
+  -h, --help       show this help
+  --version        show version
+
+env:
+  CONSILIUM_LOG_DIR   transcript directory (default: ~/.consilium/log)
+  CONSILIUM_TIMEOUT   per-call timeout, if 'timeout'/'gtimeout' is available
+
+examples:
+  $PROG codex -- "Is a read-only sandbox enough to make a consultant safe?"
+  $PROG opencode --context design.md -- "Any race conditions in this plan?"
+  $PROG claude --code . -- "Spot bugs in the auth flow"
+EOF
+}
+
+is_known_agent() {
+  case " $AGENTS " in
+    *" $1 "*) return 0 ;;
+    *)        return 1 ;;
+  esac
+}
+
+list_agents() {
+  local a path
+  for a in $AGENTS; do
+    if path="$(command -v "$a" 2>/dev/null)"; then
+      printf '  %-9s installed  (%s)\n' "$a" "$path"
+    else
+      printf '  %-9s not found\n' "$a"
+    fi
+  done
+}
+
+# ----- argument parsing ------------------------------------------------------
+
+agent=""
+context_file=""
+code_dir=""
+model=""
+do_continue=0
+raw=0
+no_log=0
+question=""
+
+if [ "$#" -eq 0 ]; then
+  usage >&2
+  exit 2
+fi
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h|--help)    usage; exit 0 ;;
+    --version)    printf 'consilium %s %s\n' "$PROG" "$VERSION"; exit 0 ;;
+    --list)       list_agents; exit 0 ;;
+    --context)    context_file="${2:-}"; shift 2 ;;
+    --context=*)  context_file="${1#*=}"; shift ;;
+    --code)       code_dir="${2:-}"; shift 2 ;;
+    --code=*)     code_dir="${1#*=}"; shift ;;
+    --model)      model="${2:-}"; shift 2 ;;
+    --model=*)    model="${1#*=}"; shift ;;
+    --continue)   do_continue=1; shift ;;
+    --raw)        raw=1; shift ;;
+    --no-log)     no_log=1; shift ;;
+    --)           shift; question="$*"; break ;;
+    -*)           err "unknown option: $1"; usage >&2; exit 2 ;;
+    *)
+      if [ -z "$agent" ]; then
+        agent="$1"; shift
+      else
+        question="$*"; break
+      fi
+      ;;
+  esac
+done
+
+# ----- validation ------------------------------------------------------------
+
+if [ -z "$agent" ]; then
+  err "no agent given"; usage >&2; exit 2
+fi
+if ! is_known_agent "$agent"; then
+  err "unknown agent: $agent (expected one of: $AGENTS)"; exit 2
+fi
+if [ -z "$question" ]; then
+  err "no question given"; usage >&2; exit 2
+fi
+if [ -n "$context_file" ] && [ ! -f "$context_file" ]; then
+  err "context file not found: $context_file"; exit 2
+fi
+if [ -n "$code_dir" ] && [ ! -d "$code_dir" ]; then
+  err "code dir not found: $code_dir"; exit 2
+fi
+if ! command -v "$agent" >/dev/null 2>&1; then
+  err "agent '$agent' is not installed or not on PATH"; exit 127
+fi
+
+# ----- prompt assembly -------------------------------------------------------
+
+if [ "$raw" -eq 1 ]; then
+  prompt="$question"
+else
+  prompt="$PREAMBLE"
+  if [ -n "$context_file" ]; then
+    prompt="$prompt
+
+## Context
+
+$(cat "$context_file")"
+  fi
+  prompt="$prompt
+
+## Question
+
+$question"
+fi
+
+# ----- build the agent command ----------------------------------------------
+
+cmd=("$agent")
+case "$agent" in
+  claude)
+    cmd+=(-p)
+    [ "$do_continue" -eq 1 ] && cmd+=(-c)
+    [ -n "$model" ] && cmd+=(--model "$model")
+    [ -n "$code_dir" ] && cmd+=(--add-dir "$code_dir")
+    cmd+=("$prompt")
+    ;;
+  agy)
+    cmd+=(-p)
+    [ "$do_continue" -eq 1 ] && cmd+=(-c)
+    [ -n "$model" ] && cmd+=(--model "$model")
+    [ -n "$code_dir" ] && cmd+=(--add-dir "$code_dir")
+    cmd+=("$prompt")
+    ;;
+  opencode)
+    cmd+=(run)
+    [ "$do_continue" -eq 1 ] && cmd+=(-c)
+    [ -n "$model" ] && cmd+=(-m "$model")
+    [ -n "$code_dir" ] && warn "opencode: --code is not wired in the dispatch table; ignoring"
+    cmd+=("$prompt")
+    ;;
+  codex)
+    cmd+=(exec --sandbox read-only)
+    [ "$do_continue" -eq 1 ] && warn "codex: --continue is not supported in exec mode; ignoring"
+    [ -n "$model" ] && cmd+=(-m "$model")
+    [ -n "$code_dir" ] && cmd+=(-C "$code_dir")
+    cmd+=("$prompt")
+    ;;
+esac
+
+# ----- optional timeout wrapper ---------------------------------------------
+
+runner=()
+if [ -n "${CONSILIUM_TIMEOUT:-}" ]; then
+  if command -v timeout >/dev/null 2>&1; then
+    runner=(timeout "$CONSILIUM_TIMEOUT")
+  elif command -v gtimeout >/dev/null 2>&1; then
+    runner=(gtimeout "$CONSILIUM_TIMEOUT")
+  else
+    warn "CONSILIUM_TIMEOUT set but no 'timeout'/'gtimeout' found; running without it"
+  fi
+fi
+
+# ----- run, print, and log ---------------------------------------------------
+
+status=0
+
+if [ "$no_log" -eq 1 ]; then
+  "${runner[@]+"${runner[@]}"}" "${cmd[@]}" </dev/null || status=$?
+  exit "$status"
+fi
+
+mkdir -p "$LOG_DIR"
+ts="$(date +%Y%m%d-%H%M%S)"
+logfile="$LOG_DIR/${ts}-${agent}.md"
+tmp="$(mktemp "${TMPDIR:-/tmp}/consilium.XXXXXX")"
+
+set +e
+"${runner[@]+"${runner[@]}"}" "${cmd[@]}" </dev/null | tee "$tmp"
+status=${PIPESTATUS[0]}
+set -e
+
+{
+  printf '# consilium consult — %s — %s\n\n' "$agent" "$ts"
+  printf '## Prompt\n\n```\n%s\n```\n\n' "$prompt"
+  printf '## Answer\n\n'
+  cat "$tmp"
+  printf '\n'
+} > "$logfile"
+
+rm -f "$tmp"
+printf '\n[consilium] transcript: %s\n' "$logfile" >&2
+
+exit "$status"
