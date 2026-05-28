@@ -17,10 +17,11 @@ consult claude   --code . -- "Spot bugs in the auth flow"
 ```
 
 > **Status: early work in progress.** The bash adapter (`bin/consult`) works and
-> has been live-tested against codex, opencode and agy. A native PowerShell port
-> for Windows (`bin/consult.ps1`) exists but is not yet verified. Packaging, the
-> Claude Code skill, and per-client wrappers are still ahead. The single source of
-> truth for the design is [`docs/architecture.md`](docs/architecture.md). See
+> has been live-tested against codex, opencode and agy. The native PowerShell port
+> (`bin/consult.ps1`) is verified on PowerShell 7 — the only piece not yet
+> exercised on real Windows is the `.cmd`-shim routing. Packaging, the Claude Code
+> skill, and per-client wrappers are still ahead. The single source of truth for
+> the design is [`docs/architecture.md`](docs/architecture.md). See
 > [Roadmap](#roadmap) for the full picture.
 
 ## Why a second agent
