@@ -2,62 +2,63 @@
 
 **English** · [Українська](README.uk.md) · [Русский](README.ru.md)
 
-> A second AI, reading over your AI's shoulder.
+> Let your AI ask a different AI when it isn't sure.
 
-Your coding assistant is sharp, but it has one blind spot: its own. It will talk
-itself into a shaky migration, miss a race condition, or keep digging into a dead
-end instead of backing out. **consilium** lets it stop and ask a *different* AI —
-Claude, GPT, or Gemini — to read the same code and say what it really thinks. The
-second AI only gives an opinion. It never touches your files.
+Your coding assistant is good, but it has the same problem the rest of us do: it
+can't always tell when it's wrong. It will convince itself a migration is safe,
+miss a race condition, or keep hammering a broken approach instead of stopping to
+check. consilium gives it a way to stop and check. It hands the same code to a
+different model (Claude, GPT, or Gemini) and asks what that one thinks. The other
+AI only answers. It never changes your files.
 
-> Early days, but it's already part of the daily routine here.
+> Still early, but I reach for it most days.
 
-## When you'll actually reach for it
+## When it's worth asking
 
-You're about to run a database migration and a small voice asks *what if this runs
-twice?* Get another AI to look before you press enter, not after.
+A second read pays off in moments like these.
 
-The retry loop looks fine and the tests are green, yet it still falls over in
-production about once a day. A fresh model reads the back-off math and catches the
-off-by-one you've been staring past all week.
+You're about to run a database migration and you're not sure it's safe if it runs
+twice. Ask before you hit enter, not after.
 
-You and your assistant have been circling the same bug for an hour, every fix
-breaking the last one. That's the moment to bring in someone who wasn't in the room
-for the first fifty-nine minutes.
+A retry loop passes every test and still falls over in production once a day.
+Another model reads the back-off logic and spots the off-by-one you'd stopped
+noticing.
 
-The auth check feels right. "Feels right" isn't the bar for auth — hand the file to
-a second AI with one question: *can this be bypassed?*
+You and your assistant have spent an hour on one bug, each fix breaking the last.
+Bring in something that wasn't around for the first fifty-nine minutes.
 
-It's release night, the changelog is long, and you can't shake the feeling you
-broke something for people already using it. Two minutes of a second opinion beats
-a rollback at 2 a.m.
+The auth check looks right. But you wrote it, so of course it does. Send it to a
+different model and ask the one question that counts: can this be bypassed?
 
-## Install it — just ask your AI
+Release is minutes away and something about backwards compatibility nags at you,
+though you can't name it yet. Two minutes now is cheaper than a rollback at
+midnight.
 
-Copy this and paste it to your assistant (Claude Code, Codex, OpenCode, or
-Antigravity):
+## Install it (just ask your AI)
+
+Paste this to your assistant (Claude Code, Codex, OpenCode, or Antigravity):
 
 > Install consilium from https://github.com/Lexus2016/consilium for me: clone it,
 > run its `install.sh`, and set yourself up to ask other AIs for a second opinion
 > the way its `clients/README.md` describes.
 
-It does the rest. You only need the assistants you actually want to ask.
+That's it. You only need the assistants you actually plan to ask.
 
-## Use it — just ask, in plain words
+## Use it
 
-Tell your assistant things like:
+Just say what you want, in plain words:
 
-> "Get a second opinion from codex on this before we continue."
+> "Before we continue, get a second opinion from codex on this."
 
 > "Ask another AI whether this change is safe."
 
-> "I'm stuck — check this with agy."
+> "I'm stuck. Check this with agy."
 
-It asks the other AI, shows you the answer, and tells you what it makes of it. **You
-always decide what happens next.**
+It runs the request, shows you the reply, and tells you whether it agrees. What
+happens next is your call.
 
-Prefer to do it yourself? It's one line in the terminal — who you're asking, then
-your question:
+If you'd rather run it yourself, it's one line: who you're asking, then the
+question.
 
 ```
 consult codex -- "Is it safe to do it this way?"
@@ -65,24 +66,23 @@ consult codex -- "Is it safe to do it this way?"
 
 ## Good to know
 
-- The other AI is there to **advise, not act** — consilium never lets it skip
-  safety checks, and it answers without changing your files.
-- The assistants you want to ask must be **installed and signed in** first. Run
+- The other AI advises, it doesn't act. consilium won't let it skip safety checks,
+  and it answers without editing your files.
+- The assistants you want to ask have to be installed and signed in first. Run
   `consult --list` to see who's ready.
-- It works in the same project folder you're in, so it already has your code in
-  front of it.
-- Ask a *different* AI than the one you're using. A fresh pair of eyes is the whole
-  point.
-- Each call is a real request to another model, so save it for the decisions that
-  matter, not every typo.
-- Keep passwords and secret keys out of your question.
+- It runs in your current project folder, so your code is already in front of it.
+- Ask a different model than the one you're using. A second Claude mostly agrees
+  with the first.
+- Every call is a real request to another model, so save it for the things that
+  matter.
+- Don't put passwords or keys in the question.
 
-## Want the details?
+## Read more
 
-- Real examples, start to finish: [`docs/examples.md`](docs/examples.md)
-- A short guide for people: [`docs/usage.md`](docs/usage.md)
-- The how-to your assistant follows: [`docs/consulting-guide.md`](docs/consulting-guide.md)
-- How it's built, for the curious: [`docs/architecture.md`](docs/architecture.md)
+- Real situations, in plain language: [`docs/examples.md`](docs/examples.md)
+- A short guide for you: [`docs/usage.md`](docs/usage.md)
+- The playbook your assistant follows: [`docs/consulting-guide.md`](docs/consulting-guide.md)
+- How it's built, if you're curious: [`docs/architecture.md`](docs/architecture.md)
 
 ## License
 
