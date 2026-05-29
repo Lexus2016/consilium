@@ -6,10 +6,10 @@
 
 Your coding assistant is good, but it has the same problem the rest of us do: it
 can't always tell when it's wrong. It will convince itself a migration is safe,
-miss a race condition, or keep hammering a broken approach instead of stopping to
-check. consilium gives it a way to stop and check. It hands the same code to a
-different model (Claude, GPT, or Gemini) and asks what that one thinks. The other
-AI only answers. It never changes your files.
+miss a race condition, or keep hammering a broken approach long after it should
+have stopped. consilium gives it an out: it hands the same code to a different
+model (Claude, GPT, or Gemini) and asks what that one thinks. The other AI only
+answers. It never changes your files.
 
 > Still early, but I reach for it most days.
 
@@ -25,7 +25,7 @@ Another model reads the back-off logic and spots the off-by-one you'd stopped
 noticing.
 
 You and your assistant have spent an hour on one bug, each fix breaking the last.
-Bring in something that wasn't around for the first fifty-nine minutes.
+Time to bring in a model that wasn't there for the first fifty-nine minutes.
 
 The auth check looks right. But you wrote it, so of course it does. Send it to a
 different model and ask the one question that counts: can this be bypassed?

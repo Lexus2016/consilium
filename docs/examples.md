@@ -32,7 +32,7 @@ You've got a plan and want to know what could go wrong with it.
 
 ## When you and your assistant disagree
 
-You're not convinced the idea your assistant is pushing is the right one.
+You're not convinced your assistant's idea is the right one.
 
 > "I'm not sold on this. Get an independent opinion from codex."
 
