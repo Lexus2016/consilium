@@ -43,7 +43,7 @@ agents:
 options:
   --context FILE   inline a context file into the prompt
   --code DIR       give the advisor a working directory for code context
-  --model NAME     override the model
+  --model NAME     override the model (claude/opencode/codex only; agy ignores it)
   --continue       continue the advisor's previous session
   --raw            send the question as-is (no advisor preamble)
   --no-log         do not write a transcript
@@ -173,7 +173,9 @@ switch ($agent) {
     'agy' {
         $cmdArgs += '-p'
         if ($doContinue) { $cmdArgs += '-c' }
-        if ($model)   { $cmdArgs += @('--model', $model) }
+        # agy (Gemini CLI) has no model-selection flag; passing --model would be
+        # swallowed into the prompt and corrupt the question. Ignore it loudly.
+        if ($model)   { Write-WarnMsg 'agy: model selection via flag is not supported; ignoring --model' }
         if ($codeDir) { $cmdArgs += @('--add-dir', $codeDir) }
         $cmdArgs += $prompt
     }
