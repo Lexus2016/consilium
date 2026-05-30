@@ -44,6 +44,17 @@ Paste this to your assistant (Claude Code, Codex, OpenCode, or Antigravity):
 
 That's it. You only need the assistants you actually plan to ask.
 
+## Update it
+
+From your consilium clone, one command pulls the latest and re-syncs everything:
+
+    git pull && ./install.sh --clients
+
+The CLI is symlinked, so the `consult` command tracks `git pull` on its own;
+`--clients` refreshes the hub block in the agents you use (codex/opencode/agy)
+and the Claude skill. The hub block carries no agent list, so new advisors never
+need a manual re-sync.
+
 ## Use it
 
 Just say what you want, in plain words:

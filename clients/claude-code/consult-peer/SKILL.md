@@ -1,6 +1,6 @@
 ---
 name: consult-peer
-description: Use when stuck after repeated attempts, before a hard-to-reverse decision (schema/API/security/release), or when you want an independent blind-spot check on a plan or your own output — gets a second opinion from a different AI (codex, agy, hermes, opencode) via the `consult` command and folds it back into your work.
+description: Use when stuck after repeated attempts, before a hard-to-reverse decision (schema/API/security/release), or when you want an independent blind-spot check on a plan or your own output — gets a second opinion from a different AI provider via the `consult` command and folds it back into your work.
 ---
 
 # consult-peer
@@ -22,9 +22,9 @@ Skip it for trivial, easily-reversible steps — a second opinion there is noise
 ## How to consult
 
 1. **Pick an independent advisor.** Consult a *different provider* than yourself.
-   You are Claude, so prefer `codex` (OpenAI), `agy` (Gemini), or `hermes`
-   (Nous Research); `opencode` is a model-agnostic voice. A second Claude
-   mostly agrees with itself.
+   You are Claude, so prefer a different provider — e.g. `codex`, `agy`, or
+   `hermes`; run `consult --list` for the full set. A second Claude mostly
+   agrees with itself.
 
 2. **Build a sharp question.** The advisor has none of your context.
    - Write the relevant slice to a temp file and pass `--context FILE`. Keep it

@@ -6,29 +6,40 @@
 # into your bin directory (so `git pull` keeps `consult` current); pass --copy to
 # copy the file instead.
 #
+# Pass --clients to also sync the consult-peer hub block into the agents you
+# already use (codex / opencode / agy) and copy the Claude skill. This is the
+# one command to run after `git pull` to push a new release everywhere:
+#   git pull && ./install.sh --clients
+#
 # Windows, native PowerShell: there is no shell installer — point your PATH at
 # bin/consult.ps1 (see the README).
 
 set -euo pipefail
 
 mode="symlink"
-case "${1:-}" in
-  --copy) mode="copy" ;;
-  -h|--help)
-    cat <<EOF
-usage: ./install.sh [--copy]
+do_clients=0
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --copy)    mode="copy"; shift ;;
+    --clients) do_clients=1; shift ;;
+    -h|--help)
+      cat <<EOF
+usage: ./install.sh [--copy] [--clients]
 
 Install the 'consult' command into a bin directory.
 
-  --copy   copy the script instead of symlinking (default: symlink)
+  --copy      copy the script instead of symlinking (default: symlink)
+  --clients   also sync the consult-peer hub block into installed agents
+              (codex/opencode/agy) and copy the Claude skill
 
 env:
   CONSILIUM_BIN   target bin directory (default: ~/.local/bin)
 EOF
-    exit 0 ;;
-  "") ;;
-  *) echo "install.sh: unknown argument: $1" >&2; exit 2 ;;
-esac
+      exit 0 ;;
+    *) echo "install.sh: unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
 
 repo_dir="$(cd "$(dirname "$0")" && pwd)"
 src="$repo_dir/bin/consult"
@@ -63,6 +74,61 @@ case ":$PATH:" in
     echo "  export PATH=\"$bin_dir:\$PATH\""
     ;;
 esac
+
+# ----- optional: sync hub block + skill into installed agents ----------------
+
+if [ "$do_clients" -eq 1 ]; then
+  block_file="$repo_dir/clients/hub-block.txt"
+  if [ ! -f "$block_file" ]; then
+    echo "install.sh: cannot find $block_file" >&2
+    exit 1
+  fi
+
+  # Replace the consilium block (between START/END markers) in a target file,
+  # or append it if the file exists without the block. Never creates files —
+  # only touches agents you already use. The block carries no agent list, so it
+  # never needs re-syncing when a new advisor is added; `consult --list` is the
+  # source of truth at runtime.
+  sync_block() {
+    target="$1"
+    if [ ! -f "$target" ]; then
+      echo "  skip (not present): $target"
+      return
+    fi
+    has_start=$(grep -c "consilium:consult-peer START" "$target" 2>/dev/null || true)
+    has_end=$(grep -c "consilium:consult-peer END" "$target" 2>/dev/null || true)
+    tmp="$target.consilium.tmp"
+    if [ "${has_start:-0}" -ge 1 ] && [ "${has_end:-0}" -ge 1 ]; then
+      awk '/consilium:consult-peer START/{s=1} s==0{print} /consilium:consult-peer END/{s=0; next}' "$target" > "$tmp"
+      printf '\n' >> "$tmp"
+      cat "$block_file" >> "$tmp"
+      mv "$tmp" "$target"
+      echo "  updated block: $target"
+    elif [ "${has_start:-0}" -ge 1 ] || [ "${has_end:-0}" -ge 1 ]; then
+      echo "  WARN: partial consult-peer markers in $target — fix manually; skipping" >&2
+    else
+      printf '\n' >> "$target"
+      cat "$block_file" >> "$target"
+      echo "  added block:   $target"
+    fi
+  }
+
+  echo
+  echo "syncing consult-peer hub block into installed agents:"
+  sync_block "$HOME/.codex/AGENTS.md"
+  sync_block "$HOME/.config/opencode/AGENTS.md"
+  sync_block "$HOME/.gemini/GEMINI.md"
+
+  skill_src="$repo_dir/clients/claude-code/consult-peer/SKILL.md"
+  skill_dir="$HOME/.claude/skills/consult-peer"
+  if [ -d "$HOME/.claude/skills" ] && [ -f "$skill_src" ]; then
+    mkdir -p "$skill_dir"
+    cp "$skill_src" "$skill_dir/SKILL.md"
+    echo "  skill synced:  $skill_dir/SKILL.md"
+  else
+    echo "  skip skill (~/.claude/skills not present)"
+  fi
+fi
 
 echo
 echo "try: consult --list"

@@ -80,19 +80,10 @@ can revisit the reasoning later.
 
 ## Hub instruction block
 
-This is the compact version to drop into a client's instruction file (`AGENTS.md`,
-`GEMINI.md`, a Claude skill, etc.). Keep it in sync with the rules above.
+This is the compact block to drop into a client's instruction file (`AGENTS.md`,
+`GEMINI.md`, a Claude skill, etc.). The canonical text lives in
+[`../clients/hub-block.txt`](../clients/hub-block.txt) and is installed or updated
+automatically by `./install.sh --clients` — no manual copy needed.
 
-```text
-You can consult a peer AI for a second opinion with the `consult` command:
-
-    consult <agent> [--context FILE] [--code DIR] -- "<question>"
-
-agents: claude | agy | hermes | opencode | codex  (pick a different provider than yourself)
-
-Consult when you are stuck after repeated attempts, before a hard-to-reverse
-decision, or to get a blind-spot check on a plan. Write the relevant context to a
-temp file and pass it with --context; ask one sharp question. The advisor only
-returns text — it never edits files. Read its reply as advice, then decide. Set
-CONSILIUM_TIMEOUT to bound the call. Run `consult --list` to see installed agents.
-```
+The block deliberately carries **no agent list**: `consult --list` is the runtime
+source of truth, so adding a new advisor never requires re-syncing client blocks.

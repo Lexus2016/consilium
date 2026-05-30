@@ -90,19 +90,14 @@ No shell installer for native Windows yet. Two options:
 
 ## Hub instruction block
 
-Paste this into the file named for your agent above. Canonical copy:
-[`../docs/consulting-guide.md`](../docs/consulting-guide.md).
+The canonical block lives in [`hub-block.txt`](hub-block.txt). The easiest way to
+install or update it is:
 
-```text
-You can consult a peer AI for a second opinion with the `consult` command:
+    ./install.sh --clients
 
-    consult <agent> [--context FILE] [--code DIR] -- "<question>"
+That syncs the block into the agents you already use (codex/opencode/agy) and
+copies the Claude skill. To paste it by hand instead, copy the contents of
+[`hub-block.txt`](hub-block.txt) into your agent's instruction file
+(`AGENTS.md`, `GEMINI.md`, …).
 
-agents: claude | agy | hermes | opencode | codex  (pick a different provider than yourself)
-
-Consult when you are stuck after repeated attempts, before a hard-to-reverse
-decision, or to get a blind-spot check on a plan. Write the relevant context to a
-temp file and pass it with --context; ask one sharp question. The advisor only
-returns text — it never edits files. Read its reply as advice, then decide. Set
-CONSILIUM_TIMEOUT to bound the call. Run `consult --list` to see installed agents.
-```
+The block carries no agent list — `consult --list` is the runtime source of truth.
