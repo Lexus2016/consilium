@@ -106,6 +106,9 @@ if [ "$do_clients" -eq 1 ]; then
       echo "  updated block: $target"
     elif [ "${has_start:-0}" -ge 1 ] || [ "${has_end:-0}" -ge 1 ]; then
       echo "  WARN: partial consult-peer markers in $target — fix manually; skipping" >&2
+    elif grep -q "Consulting a peer AI (consilium)" "$target"; then
+      # Legacy block pasted before markers existed: don't silently duplicate it.
+      echo "  WARN: $target has an unmarked legacy block — remove it by hand, then re-run; skipping" >&2
     else
       printf '\n' >> "$target"
       cat "$block_file" >> "$target"
