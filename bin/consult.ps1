@@ -16,7 +16,7 @@ $ErrorActionPreference = 'Stop'
 
 $Version  = '0.1.0'
 $Prog     = 'consult'
-$Agents   = @('claude', 'agy', 'opencode', 'codex')
+$Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex')
 $Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files.'
 
 function Get-HomeDir {
@@ -38,12 +38,12 @@ usage:
   $Prog <agent> [options] "<question>"
 
 agents:
-  claude | agy | opencode | codex
+  claude | agy | hermes | opencode | codex
 
 options:
   --context FILE   inline a context file into the prompt
   --code DIR       give the advisor a working directory for code context
-  --model NAME     override the model (claude/opencode/codex only; agy ignores it)
+  --model NAME     override the model (claude/hermes/opencode/codex; agy ignores it)
   --continue       continue the advisor's previous session
   --raw            send the question as-is (no advisor preamble)
   --no-log         do not write a transcript
@@ -178,6 +178,15 @@ switch ($agent) {
         if ($model)   { Write-WarnMsg 'agy: model selection via flag is not supported; ignoring --model' }
         if ($codeDir) { $cmdArgs += @('--add-dir', $codeDir) }
         $cmdArgs += $prompt
+    }
+    'hermes' {
+        # Nous Research Hermes Agent: one-shot via `hermes chat -q "<prompt>"`.
+        # All flags precede -q so the prompt is consumed as -q's value.
+        $cmdArgs += 'chat'
+        if ($model)   { $cmdArgs += @('--model', $model) }
+        if ($doContinue) { $cmdArgs += '-c' }
+        if ($codeDir) { Write-WarnMsg 'hermes: --code is not supported (no --add-dir flag); ignoring' }
+        $cmdArgs += @('-q', $prompt)
     }
     'opencode' {
         $cmdArgs += 'run'

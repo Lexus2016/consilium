@@ -33,6 +33,7 @@ model family as you**. A second instance of yourself mostly agrees with itself.
 | `codex` | OpenAI | code-heavy questions, alternative implementation takes |
 | `opencode` | model-agnostic (your configured model) | a third independent voice |
 | `agy` | Google (Gemini) | another provider's perspective |
+| `hermes` | Nous Research (Hermes) | a self-improving agent's independent take |
 
 If you're Claude, prefer `codex` or `agy`. If you're Codex, prefer `claude`.
 

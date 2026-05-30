@@ -82,6 +82,7 @@ env:
 |---|---|
 | claude | `claude -p [-c] [--model M] [--add-dir DIR] "<prompt>"` |
 | agy | `agy -p [-c] [--add-dir DIR] "<prompt>"` |
+| hermes | `hermes chat [--model M] [-c] -q "<prompt>"` (no `--add-dir`) |
 | opencode | `opencode run [-c] [-m M] "<prompt>"` |
 | codex | `codex exec --sandbox read-only [-m M] [-C DIR] "<prompt>"` |
 
