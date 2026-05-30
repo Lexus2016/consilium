@@ -98,7 +98,7 @@ You can consult a peer AI for a second opinion with the `consult` command:
 
     consult <agent> [--context FILE] [--code DIR] -- "<question>"
 
-agents: claude | agy | opencode | codex  (pick a different provider than yourself)
+agents: claude | agy | hermes | opencode | codex  (pick a different provider than yourself)
 
 Consult when you are stuck after repeated attempts, before a hard-to-reverse
 decision, or to get a blind-spot check on a plan. Write the relevant context to a

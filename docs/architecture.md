@@ -59,7 +59,7 @@ base because it is the only thing all four share with zero extra processes.
 consult <agent> [options] -- <question...>
 consult <agent> [options] "<question>"
 
-agents:  claude | agy | opencode | codex
+agents:  claude | agy | hermes | opencode | codex
 options:
   --context FILE   inline a context file into the prompt
   --code DIR       give the agent a working directory for code context
