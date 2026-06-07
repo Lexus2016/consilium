@@ -2,18 +2,67 @@
 
 **English** · [Українська](README.uk.md) · [Русский](README.ru.md)
 
-> Let your AI ask a different AI when it isn't sure.
+> Let one AI ask a different AI when it isn't sure.
 
-Your coding assistant is good, but it has the same problem the rest of us do: it
-can't always tell when it's wrong. It will convince itself a migration is safe,
-miss a race condition, or keep hammering a broken approach long after it should
-have stopped. consilium gives it an out: it hands the same code to a different
-model (Claude, GPT, or Gemini) and asks what that one thinks. The other AI only
-answers. It never changes your files.
+## What this is, in one breath
+
+There's a kind of AI that lives in your terminal and writes code *with* you — it
+reads your files, edits them, runs commands. Claude Code, Codex, Gemini's `agy`,
+and OpenCode are all this kind of tool. People call them coding assistants, or
+just "agents."
+
+They're good. But like anyone working alone, an agent can't always tell when it's
+wrong. It will talk itself into a risky change, miss a bug it wrote two minutes
+ago, and keep retrying the same broken fix long after it should have stopped.
+
+**consilium adds one command, `consult`, that lets your agent phone a _different_
+AI for a second opinion.** Your agent hands the same code or question to a model
+from another company and asks: *what do you think?* The other AI reads it and
+answers in plain text. That's all it does — it never touches your files.
+
+```
+consult codex -- "Is it safe to run this migration twice?"
+```
+
+You — or your agent — type that. A different AI reads the question, looks at the
+code in your current folder, and prints back what it thinks. You decide what to do
+with the answer.
 
 > Still early, but I reach for it most days.
 
-## When it's worth asking
+## Why ask a *different* AI, and not just ask the same one again
+
+Think of it like checking your own homework. Re-read your own answer and you see
+what you *meant* to write, not what's actually on the page. Hand it to someone from
+a different class — who studied from different notes and has no reason to agree
+with you — and they spot the mistake in five seconds.
+
+An AI has the same blind spot. Ask the same model to "double-check," and it mostly
+nods along with itself. Ask a *rival* model from another company — trained
+differently, with no stake in the first answer — and it actually pushes back. That
+pushback is the whole point. It's where the useful catches come from.
+
+So the rule is short: **ask someone other than the AI you're already working
+with.**
+
+## Who you can ask
+
+Run `consult --list` to see which of these are installed and signed in on your
+machine. Type the name in the left column; the reply comes from the model on the
+right.
+
+| You type   | Reply comes from               | Built by      |
+|------------|--------------------------------|---------------|
+| `claude`   | Claude                         | Anthropic     |
+| `codex`    | GPT                            | OpenAI        |
+| `agy`      | Gemini                         | Google        |
+| `opencode` | OpenCode (the model you set)   | open source   |
+| `hermes`   | Hermes                         | Nous Research |
+
+Pick a row that *isn't* the AI you're already using. A second Claude mostly agrees
+with the first.
+
+## When a second opinion is worth it
 
 A second read pays off in moments like these.
 
@@ -34,6 +83,15 @@ Release is minutes away and something about backwards compatibility nags at you,
 though you can't name it yet. Two minutes now is cheaper than a rollback at
 midnight.
 
+## What you need first
+
+consilium is an add-on, not an app you open on its own. Before it's any use you
+need **two terminal coding agents** installed and signed in: one that *asks*, and a
+different one that *answers*. Claude Code, Codex, `agy`, and OpenCode all qualify.
+
+Never used a terminal coding agent? Start there first — consilium only makes sense
+once you have two of them, because the whole idea is one asking the other.
+
 ## Install it (just ask your AI)
 
 Paste this to your assistant (Claude Code, Codex, OpenCode, or Antigravity):
@@ -44,20 +102,25 @@ Paste this to your assistant (Claude Code, Codex, OpenCode, or Antigravity):
 
 That's it. You only need the assistants you actually plan to ask.
 
-## Update it
+Prefer to do it by hand? Two commands:
 
-From your consilium clone, one command pulls the latest and re-syncs everything:
+```sh
+./install.sh                                     # puts `consult` on your PATH
+cp -r clients/claude-code/consult-peer ~/.claude/skills/   # teach Claude to use it
+```
 
-    git pull && ./install.sh --clients
+Then open a fresh session and run `consult --list` to confirm it's there. Already
+installed? From your clone, `git pull && ./install.sh --clients` pulls the latest
+and re-syncs everything.
 
-The CLI is symlinked, so the `consult` command tracks `git pull` on its own;
-`--clients` refreshes the hub block in the agents you use (codex/opencode/agy)
-and the Claude skill. The hub block carries no agent list, so new advisors never
-need a manual re-sync.
+## Use it — three ways
 
-## Use it
+**Your agent does it on its own.** Once it knows about `consult` (the Claude skill,
+or the hub block in `AGENTS.md` / `GEMINI.md`), it offers a second opinion by itself
+when it's stuck or about to do something hard to undo. You read the result and
+decide.
 
-Just say what you want, in plain words:
+**You ask for it in plain words.** This is the one you'll use most:
 
 > "Before we continue, get a second opinion from codex on this."
 
@@ -65,11 +128,11 @@ Just say what you want, in plain words:
 
 > "I'm stuck. Check this with agy."
 
-It runs the request, shows you the reply, and tells you whether it agrees. What
-happens next is your call.
+Your agent gathers the context, runs `consult`, shows you the reply next to its own
+read, and says whether it agrees. What happens next is your call.
 
-If you'd rather run it yourself, it's one line: who you're asking, then the
-question.
+**You run it yourself.** `consult` is an ordinary command — who you're asking, then
+the question:
 
 ```
 consult codex -- "Is it safe to do it this way?"
@@ -82,10 +145,8 @@ consult codex -- "Is it safe to do it this way?"
 - The assistants you want to ask have to be installed and signed in first. Run
   `consult --list` to see who's ready.
 - It runs in your current project folder, so your code is already in front of it.
-- Ask a different model than the one you're using. A second Claude mostly agrees
-  with the first.
 - Every call is a real request to another model, so save it for the things that
-  matter.
+  matter, not trivia.
 - Don't put passwords or keys in the question.
 
 ## Read more
