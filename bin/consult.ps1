@@ -14,7 +14,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Version  = '0.2.1'
+$Version  = '0.2.2'
 $Prog     = 'consult'
 $Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex')
 $Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files.'
@@ -43,7 +43,7 @@ agents:
 options:
   --context FILE   inline a context file into the prompt
   --code DIR       give the advisor a working directory for code context
-  --model NAME     override the model (claude/hermes/opencode/codex; agy ignores it)
+  --model NAME     override the model (claude/agy/hermes/opencode/codex)
   --continue       continue the advisor's previous session
   --raw            send the question as-is (no advisor preamble)
   --no-log         do not write a transcript
@@ -171,13 +171,15 @@ switch ($agent) {
         $cmdArgs += $prompt
     }
     'agy' {
-        $cmdArgs += '-p'
+        # agy reads the prompt as the positional that IMMEDIATELY follows -p. Any
+        # flag placed between -p and the prompt (e.g. --add-dir) is parsed as the
+        # request itself, so every flag must precede -p and the prompt must be the
+        # final token. Verified: `agy --add-dir DIR -p "..."` answers correctly,
+        # while `agy -p --add-dir DIR "..."` makes agy investigate "--add-dir".
         if ($doContinue) { $cmdArgs += '-c' }
-        # agy (Gemini CLI) has no model-selection flag; passing --model would be
-        # swallowed into the prompt and corrupt the question. Ignore it loudly.
-        if ($model)   { Write-WarnMsg 'agy: model selection via flag is not supported; ignoring --model' }
+        if ($model)   { $cmdArgs += @('--model', $model) }
         if ($codeDir) { $cmdArgs += @('--add-dir', $codeDir) }
-        $cmdArgs += $prompt
+        $cmdArgs += @('-p', $prompt)
     }
     'hermes' {
         # Nous Research Hermes Agent: one-shot via `hermes chat -q "<prompt>"`.
