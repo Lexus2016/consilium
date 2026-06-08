@@ -14,7 +14,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Version  = '0.2.2'
+$Version  = '0.2.3'
 $Prog     = 'consult'
 $Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex')
 $Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files.'
@@ -239,7 +239,14 @@ function Invoke-Agent {
     # Run the advisor in OUR working directory so it shares the same cwd-scoped
     # context (e.g. tqmemory keys memory by cwd, project AGENTS.md/GEMINI.md).
     # PowerShell's $PWD is not [Environment]::CurrentDirectory, so set it explicitly.
-    $psi.WorkingDirectory       = (Get-Location).Path
+    # Use ProviderPath (the native filesystem path) and guard against non-FileSystem
+    # locations (Registry::, Cert::), whose .Path is not a valid process directory.
+    $loc = Get-Location
+    if ($loc.Provider.Name -eq 'FileSystem') {
+        $psi.WorkingDirectory = $loc.ProviderPath
+    } else {
+        $psi.WorkingDirectory = [System.IO.Directory]::GetCurrentDirectory()
+    }
 
     $p = [System.Diagnostics.Process]::new()
     $p.StartInfo = $psi

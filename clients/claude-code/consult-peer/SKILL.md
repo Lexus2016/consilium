@@ -7,7 +7,7 @@ description: Use when stuck after repeated attempts, before a hard-to-reverse de
 
 You can ask a different AI agent for a second opinion with the `consult` command
 (from the [consilium](https://github.com/Lexus2016/consilium) project). The other
-agent only returns text — it never touches files. You read its reply and decide.
+agent advises in text — it doesn't act on your files. You read its reply and decide.
 
 ## When to reach for this
 
@@ -47,8 +47,10 @@ Skip it for trivial, easily-reversible steps — a second opinion there is noise
 
 ## Safety
 
-The advisor is read-only by design (codex runs `--sandbox read-only`; consilium
-never passes permission-skipping flags). Strip secrets from any context file
-before passing it — the advisor is another process, often another provider.
+The advisor is meant to advise, not act: codex runs hard-sandboxed under
+`--sandbox read-only`, while the others answer without editing unless you grant
+permission, and consilium never passes them permission-skipping flags. Strip
+secrets from any context file before passing it — the advisor is another process,
+often another provider.
 
 The full playbook lives in the project's `docs/consulting-guide.md`.

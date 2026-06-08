@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-VERSION="0.2.2"
+VERSION="0.2.3"
 PROG="consult"
 
 AGENTS="claude agy hermes opencode codex"
@@ -255,8 +255,18 @@ tmp="$(mktemp "${TMPDIR:-/tmp}/consilium.XXXXXX")"
 
 set +e
 "${runner[@]+"${runner[@]}"}" "${cmd[@]}" </dev/null | tee "$tmp"
-status=${PIPESTATUS[0]}
+# Snapshot the WHOLE array in one step: any later command (even `set -e` or the
+# `status=` assignment) resets PIPESTATUS, so reading [1] afterwards would be an
+# unbound-variable abort under `set -u`.
+pipe_status=("${PIPESTATUS[@]}")
 set -e
+status=${pipe_status[0]}
+tee_status=${pipe_status[1]:-0}
+# tee can fail (disk full, no write perm) while the advisor itself succeeded.
+# Surface that so a silently-truncated transcript isn't mistaken for a good one.
+if [ "$tee_status" -ne 0 ]; then
+  warn "could not capture transcript (tee exit $tee_status); the answer above was not saved"
+fi
 
 {
   printf '# consilium consult — %s — %s\n\n' "$agent" "$ts"

@@ -82,9 +82,10 @@ vague reply back.
 
 ## Worth keeping in mind
 
-- **You stay in control.** The other AI returns text and answers without changing
-  your files. codex runs read-only, and consilium never lets any advisor skip
-  safety checks. Every edit stays between you and Claude.
+- **You stay in control.** The other AI returns text and is there to advise, not
+  act. codex runs hard-sandboxed read-only; the others answer without editing
+  unless you grant permission, and consilium never passes them permission-granting
+  flags. Every edit stays between you and Claude.
 - **Pick an independent one.** Choose a different provider than the one you're using
   — `codex` (OpenAI) or `agy` (Gemini) rather than a second Claude, which mostly
   agrees with itself.

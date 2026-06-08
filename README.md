@@ -18,7 +18,7 @@ ago, and keep retrying the same broken fix long after it should have stopped.
 **consilium adds one command, `consult`, that lets your agent phone a _different_
 AI for a second opinion.** Your agent hands the same code or question to a model
 from another company and asks: *what do you think?* The other AI reads it and
-answers in plain text. That's all it does — it never touches your files.
+answers in plain text. It advises; it doesn't act for you.
 
 ```
 consult codex -- "Is it safe to run this migration twice?"
@@ -140,8 +140,9 @@ consult codex -- "Is it safe to do it this way?"
 
 ## Good to know
 
-- The other AI advises, it doesn't act. consilium won't let it skip safety checks,
-  and it answers without editing your files.
+- The other AI advises, it doesn't act. codex runs hard-sandboxed read-only; the
+  others answer without editing unless you grant permission, and consilium never
+  passes them permission-granting flags. Either way, your edits stay yours.
 - The assistants you want to ask have to be installed and signed in first. Run
   `consult --list` to see who's ready.
 - It runs in your current project folder, so your code is already in front of it.

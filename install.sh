@@ -98,14 +98,20 @@ if [ "$do_clients" -eq 1 ]; then
     has_start=$(grep -c "consilium:consult-peer START" "$target" 2>/dev/null || true)
     has_end=$(grep -c "consilium:consult-peer END" "$target" 2>/dev/null || true)
     tmp="$target.consilium.tmp"
-    if [ "${has_start:-0}" -ge 1 ] && [ "${has_end:-0}" -ge 1 ]; then
+    trap 'rm -f "$tmp"' RETURN
+    # Require EXACTLY one of each marker. With -ge 1 an unbalanced file (e.g.
+    # two START + one END) would still take the awk branch, whose state machine
+    # then deletes everything after the second START to EOF — silent data loss.
+    if [ "${has_start:-0}" -eq 1 ] && [ "${has_end:-0}" -eq 1 ]; then
       awk '/consilium:consult-peer START/{s=1} s==0{print} /consilium:consult-peer END/{s=0; next}' "$target" > "$tmp"
       printf '\n' >> "$tmp"
       cat "$block_file" >> "$tmp"
-      mv "$tmp" "$target"
+      # Write through the file (cat >), not mv, so a dotfiles symlink at $target
+      # keeps pointing at its real file instead of being replaced by a plain file.
+      cat "$tmp" > "$target"
       echo "  updated block: $target"
     elif [ "${has_start:-0}" -ge 1 ] || [ "${has_end:-0}" -ge 1 ]; then
-      echo "  WARN: partial consult-peer markers in $target — fix manually; skipping" >&2
+      echo "  WARN: unbalanced or duplicate consult-peer markers in $target — fix manually; skipping" >&2
     elif grep -q "Consulting a peer AI (consilium)" "$target"; then
       # Legacy block pasted before markers existed: don't silently duplicate it.
       echo "  WARN: $target has an unmarked legacy block — remove it by hand, then re-run; skipping" >&2
