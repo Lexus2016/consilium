@@ -11,11 +11,15 @@
 
 set -euo pipefail
 
-VERSION="0.2.3"
+VERSION="0.3.0"
 PROG="consult"
 
 AGENTS="claude agy hermes opencode codex"
 PREAMBLE="You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files."
+# Used by --review. Deliberately adversarial: a reviewer told to 'assess quality'
+# rubber-stamps; a reviewer told to 'find where the RESULT fails the TASK' catches
+# real defects. The PASS/FAIL verdict makes the answer actionable for the hub.
+REVIEW_PREAMBLE="You are a peer AI advisor doing an ADVERSARIAL review for another agent. You are given a TASK (the question, plus any ## Context) and a RESULT to judge (a diff or files under ## Input, and/or the working directory). Find every place the RESULT does NOT satisfy the TASK, plus bugs, missing edge cases, and weaknesses. Do not rubber-stamp; if it is fine, say so, but only after a genuine search. Be concrete: cite the exact location and explain what is wrong and why. Finish with a line 'VERDICT: PASS' or 'VERDICT: FAIL' followed by a short, ranked list of the most important issues. Advice only — do not modify, create, or delete files."
 
 LOG_DIR="${CONSILIUM_LOG_DIR:-$HOME/.consilium/log}"
 
@@ -29,20 +33,32 @@ $PROG — consult another AI coding agent for a second opinion.
 usage:
   $PROG <agent> [options] -- <question...>
   $PROG <agent> [options] "<question>"
+  $PROG --panel <a,b,c> [options] -- <question...>
+  <command> | $PROG <agent> [options] -- <question...>
 
 agents:
   claude | agy | hermes | opencode | codex
 
 options:
+  --panel LIST     ask several advisors in parallel (comma-separated), each
+                   independently, then print all answers back-to-back
   --context FILE   inline a context file into the prompt
   --code DIR       give the advisor a working directory for code context
   --model NAME     override the model (claude/agy/hermes/opencode/codex)
   --continue       continue the advisor's previous session
+  --review         use an adversarial review preamble: judge the RESULT
+                   (piped diff / --context / --code) against the TASK in the
+                   question, hunt for mismatches and bugs, end with PASS/FAIL
   --raw            send the question as-is (no advisor preamble)
   --no-log         do not write a transcript
   --list           list agents and whether each is installed
   -h, --help       show this help
   --version        show version
+
+stdin:
+  if you pipe text in (e.g. \`git diff | $PROG ...\`) it is added to the
+  prompt under an "## Input" heading, so the advisor sees it as the material
+  to review. The advisor's own stdin is closed; only the hub reads the pipe.
 
 env:
   CONSILIUM_LOG_DIR   transcript directory (default: ~/.consilium/log)
@@ -54,6 +70,9 @@ examples:
   $PROG codex -- "Is a read-only sandbox enough to make a consultant safe?"
   $PROG opencode --context design.md -- "Any race conditions in this plan?"
   $PROG claude --code . -- "Spot bugs in the auth flow"
+  $PROG --panel agy,opencode,codex -- "Is this migration safe to run twice?"
+  git diff | $PROG codex -- "Review these changes for bugs"
+  git diff | $PROG --panel codex,agy --review -- "Task: add rate limiting to the login route"
 EOF
 }
 
@@ -78,13 +97,24 @@ list_agents() {
 # ----- argument parsing ------------------------------------------------------
 
 agent=""
+panel=""
 context_file=""
 code_dir=""
 model=""
 do_continue=0
 raw=0
+review=0
 no_log=0
 question=""
+
+# How to re-invoke ourselves for --panel children. Prefer the installed
+# `consult` (a PATH symlink that points back here), so a panel works the same
+# whether the parent ran from PATH or as ./bin/consult; fall back to $0.
+if command -v consult >/dev/null 2>&1; then
+  SELF="consult"
+else
+  SELF="$0"
+fi
 
 if [ "$#" -eq 0 ]; then
   usage >&2
@@ -100,10 +130,13 @@ while [ "$#" -gt 0 ]; do
     --context=*)  context_file="${1#*=}"; shift ;;
     --code)       [ "$#" -ge 2 ] || { err "option --code needs a value"; exit 2; }; code_dir="$2"; shift 2 ;;
     --code=*)     code_dir="${1#*=}"; shift ;;
+    --panel)      [ "$#" -ge 2 ] || { err "option --panel needs a value"; exit 2; }; panel="$2"; shift 2 ;;
+    --panel=*)    panel="${1#*=}"; shift ;;
     --model)      [ "$#" -ge 2 ] || { err "option --model needs a value"; exit 2; }; model="$2"; shift 2 ;;
     --model=*)    model="${1#*=}"; shift ;;
     --continue)   do_continue=1; shift ;;
     --raw)        raw=1; shift ;;
+    --review)     review=1; shift ;;
     --no-log)     no_log=1; shift ;;
     --)           shift; question="$*"; break ;;
     -*)           err "unknown option: $1"; usage >&2; exit 2 ;;
@@ -119,12 +152,6 @@ done
 
 # ----- validation ------------------------------------------------------------
 
-if [ -z "$agent" ]; then
-  err "no agent given"; usage >&2; exit 2
-fi
-if ! is_known_agent "$agent"; then
-  err "unknown agent: $agent (expected one of: $AGENTS)"; exit 2
-fi
 if [ -z "$question" ]; then
   err "no question given"; usage >&2; exit 2
 fi
@@ -134,8 +161,39 @@ fi
 if [ -n "$code_dir" ] && [ ! -d "$code_dir" ]; then
   err "code dir not found: $code_dir"; exit 2
 fi
-if ! command -v "$agent" >/dev/null 2>&1; then
-  err "agent '$agent' is not installed or not on PATH"; exit 127
+
+# panel_agents is the resolved, validated list for --panel mode; empty in
+# single-advisor mode.
+panel_agents=""
+if [ -n "$panel" ]; then
+  if [ -n "$agent" ]; then
+    err "use either <agent> or --panel, not both"; exit 2
+  fi
+  # comma-separated -> space-separated, keeping only known + installed advisors,
+  # de-duplicated, order preserved.
+  for a in $(printf '%s' "$panel" | tr ',' ' '); do
+    if ! is_known_agent "$a"; then
+      warn "panel: unknown agent '$a' (expected one of: $AGENTS); skipping"; continue
+    fi
+    if ! command -v "$a" >/dev/null 2>&1; then
+      warn "panel: agent '$a' is not installed or not on PATH; skipping"; continue
+    fi
+    case " $panel_agents " in *" $a "*) ;; *) panel_agents="$panel_agents $a" ;; esac
+  done
+  panel_agents="${panel_agents# }"
+  if [ -z "$panel_agents" ]; then
+    err "panel: no usable advisors in '$panel'"; exit 2
+  fi
+else
+  if [ -z "$agent" ]; then
+    err "no agent given"; usage >&2; exit 2
+  fi
+  if ! is_known_agent "$agent"; then
+    err "unknown agent: $agent (expected one of: $AGENTS)"; exit 2
+  fi
+  if ! command -v "$agent" >/dev/null 2>&1; then
+    err "agent '$agent' is not installed or not on PATH"; exit 127
+  fi
 fi
 
 # ----- recursion guard -------------------------------------------------------
@@ -151,18 +209,114 @@ if [ "$depth" -ge "$max_depth" ]; then
 fi
 export CONSILIUM_CALL_DEPTH=$((depth + 1))
 
+# ----- piped stdin -----------------------------------------------------------
+# If text was piped in, read it ONCE here in the hub; it becomes review material
+# in the prompt (## Input). Every advisor is exec'd with </dev/null, so the hub
+# is the only thing that ever consumes the pipe.
+#
+# Read ONLY when stdin is a real pipe (`cmd | consult`) or a redirected file
+# (`consult < file`). A bare terminal, /dev/null, or a closed/socket stdin (how
+# most non-interactive launchers wire it) must NOT trigger a read, or `cat`
+# would block forever waiting for an EOF that never comes.
+stdin_content=""
+if [ -p /dev/stdin ] || { [ ! -t 0 ] && [ -f /dev/stdin ]; }; then
+  stdin_content="$(cat)" || stdin_content=""
+fi
+
+# ----- panel mode: fan out to several advisors in parallel -------------------
+# Each advisor is a plain recursive `consult` call, so it reuses ALL of the
+# dispatch / timeout / logging logic below and writes its own transcript. The
+# advisors never see each other's answers — independence is the point; the hub
+# synthesizes. Children inherit CONSILIUM_CALL_DEPTH+1, so the depth guard still
+# bounds any onward consulting.
+if [ -n "$panel_agents" ]; then
+  # Build one effective context file for the children: optional user --context
+  # plus optional piped stdin, merged once (children are separate processes and
+  # cannot read this hub's already-consumed stdin).
+  panel_ctx=""
+  panel_ctx_tmp=""
+  if [ -n "$stdin_content" ]; then
+    panel_ctx_tmp="$(mktemp "${TMPDIR:-/tmp}/consilium-panelctx.XXXXXX")"
+    {
+      if [ -n "$context_file" ]; then cat "$context_file"; printf '\n'; fi
+      printf '%s\n' "$stdin_content"
+    } > "$panel_ctx_tmp"
+    panel_ctx="$panel_ctx_tmp"
+  elif [ -n "$context_file" ]; then
+    panel_ctx="$context_file"
+  fi
+
+  paneldir="$(mktemp -d "${TMPDIR:-/tmp}/consilium-panel.XXXXXX")"
+  pids=""
+  idx=0
+  for a in $panel_agents; do
+    idx=$((idx + 1))
+    out="$paneldir/$(printf '%03d' "$idx")-$a.out"
+    err="$paneldir/$(printf '%03d' "$idx")-$a.err"
+    (
+      child=("$SELF" "$a")
+      [ -n "$panel_ctx" ]      && child+=(--context "$panel_ctx")
+      [ -n "$code_dir" ]       && child+=(--code "$code_dir")
+      [ -n "$model" ]          && child+=(--model "$model")
+      [ "$do_continue" -eq 1 ] && child+=(--continue)
+      [ "$raw" -eq 1 ]         && child+=(--raw)
+      [ "$review" -eq 1 ]      && child+=(--review)
+      [ "$no_log" -eq 1 ]      && child+=(--no-log)
+      "${child[@]}" -- "$question"
+    ) >"$out" 2>"$err" </dev/null &
+    pids="$pids $!"
+  done
+
+  panel_status=0
+  for p in $pids; do
+    if ! wait "$p"; then panel_status=1; fi
+  done
+
+  idx=0
+  for a in $panel_agents; do
+    idx=$((idx + 1))
+    out="$paneldir/$(printf '%03d' "$idx")-$a.out"
+    err="$paneldir/$(printf '%03d' "$idx")-$a.err"
+    printf '\n===== %s =====\n\n' "$a"
+    [ -f "$out" ] && cat "$out"
+    [ -f "$err" ] && [ -s "$err" ] && cat "$err" >&2
+  done
+  printf '\n'
+
+  rm -rf "$paneldir"
+  [ -n "$panel_ctx_tmp" ] && rm -f "$panel_ctx_tmp"
+  exit "$panel_status"
+fi
+
 # ----- prompt assembly -------------------------------------------------------
 
 if [ "$raw" -eq 1 ]; then
+  [ "$review" -eq 1 ] && warn "--review has no effect with --raw (raw sends the question verbatim); ignoring --review"
   prompt="$question"
+  if [ -n "$stdin_content" ]; then
+    prompt="$prompt
+
+$stdin_content"
+  fi
 else
-  prompt="$PREAMBLE"
+  if [ "$review" -eq 1 ]; then
+    prompt="$REVIEW_PREAMBLE"
+  else
+    prompt="$PREAMBLE"
+  fi
   if [ -n "$context_file" ]; then
     prompt="$prompt
 
 ## Context
 
 $(cat "$context_file")"
+  fi
+  if [ -n "$stdin_content" ]; then
+    prompt="$prompt
+
+## Input
+
+$stdin_content"
   fi
   prompt="$prompt
 

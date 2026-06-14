@@ -56,6 +56,43 @@ consult codex --context /tmp/plan.md -- "Does this migration lose data if it run
 consult agy   --code .               -- "Spot the bug in the retry/backoff loop"
 ```
 
+## Ask several at once, pipe in work, and review
+
+Three shapes for richer feedback — all still "just a shell command", no daemon,
+no shared state between advisors.
+
+**Panel — independent voices in parallel.** `--panel` fans the same question out
+to several advisors at once. They answer *independently* and never see each
+other's replies — that independence is the whole point. You read all the answers
+and synthesize. Prefer this over any scheme where advisors debate each other:
+debate makes models anchor on the first argument and converge on a
+confident-but-not-better consensus, which is exactly the false signal a
+verification tool must avoid.
+
+```sh
+consult --panel codex,agy,opencode -- "Is this lock ordering deadlock-free?"
+```
+
+**Pipe in the material.** Anything you pipe to `consult` is added to the prompt
+under `## Input`, so the advisor reviews it directly — no temp file needed.
+
+```sh
+git diff | consult codex -- "Review these changes for bugs"
+```
+
+**Review mode.** `--review` swaps the preamble for an adversarial one: the advisor
+is told to find where the RESULT fails the TASK (not to "assess quality", which
+invites a rubber stamp) and to end with `VERDICT: PASS` or `VERDICT: FAIL`. Use it
+to check finished work against its spec. Combine all three for an independent,
+cross-checked review:
+
+```sh
+git diff | consult --panel codex,agy --review -- "Task: add rate limiting to the login route"
+```
+
+You stay the moderator: independent advisors fan out, you weigh and synthesize.
+Star topology, never a debate mesh.
+
 ## Read the reply as advice, not orders
 
 What comes back is one opinion. Weigh it:

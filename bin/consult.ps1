@@ -14,10 +14,14 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Version  = '0.2.3'
+$Version  = '0.3.0'
 $Prog     = 'consult'
 $Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex')
 $Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files.'
+# Used by --review. Deliberately adversarial: a reviewer told to 'assess quality'
+# rubber-stamps; one told to 'find where the RESULT fails the TASK' catches real
+# defects. The PASS/FAIL verdict makes the answer actionable for the hub.
+$ReviewPreamble = 'You are a peer AI advisor doing an ADVERSARIAL review for another agent. You are given a TASK (the question, plus any ## Context) and a RESULT to judge (a diff or files under ## Input, and/or the working directory). Find every place the RESULT does NOT satisfy the TASK, plus bugs, missing edge cases, and weaknesses. Do not rubber-stamp; if it is fine, say so, but only after a genuine search. Be concrete: cite the exact location and explain what is wrong and why. Finish with a line ''VERDICT: PASS'' or ''VERDICT: FAIL'' followed by a short, ranked list of the most important issues. Advice only — do not modify, create, or delete files.'
 
 function Get-HomeDir {
     if ($env:HOME)        { return $env:HOME }
@@ -36,20 +40,32 @@ $Prog — consult another AI coding agent for a second opinion.
 usage:
   $Prog <agent> [options] -- <question...>
   $Prog <agent> [options] "<question>"
+  $Prog --panel <a,b,c> [options] -- <question...>
+  <command> | $Prog <agent> [options] -- <question...>
 
 agents:
   claude | agy | hermes | opencode | codex
 
 options:
+  --panel LIST     ask several advisors in parallel (comma-separated), each
+                   independently, then print all answers back-to-back
   --context FILE   inline a context file into the prompt
   --code DIR       give the advisor a working directory for code context
   --model NAME     override the model (claude/agy/hermes/opencode/codex)
   --continue       continue the advisor's previous session
+  --review         use an adversarial review preamble: judge the RESULT
+                   (piped diff / --context / --code) against the TASK in the
+                   question, hunt for mismatches and bugs, end with PASS/FAIL
   --raw            send the question as-is (no advisor preamble)
   --no-log         do not write a transcript
   --list           list agents and whether each is installed
   -h, --help       show this help
   --version        show version
+
+stdin:
+  if you pipe text in (e.g. ``git diff | $Prog ...``) it is added to the
+  prompt under an "## Input" heading, so the advisor sees it as the material
+  to review. The advisor's own stdin is closed; only the hub reads the pipe.
 
 env:
   CONSILIUM_LOG_DIR   transcript directory (default: ~/.consilium/log)
@@ -61,6 +77,9 @@ examples:
   $Prog codex -- "Is a read-only sandbox enough to make a consultant safe?"
   $Prog opencode --context design.md -- "Any race conditions in this plan?"
   $Prog claude --code . -- "Spot bugs in the auth flow"
+  $Prog --panel agy,opencode,codex -- "Is this migration safe to run twice?"
+  git diff | $Prog codex -- "Review these changes for bugs"
+  git diff | $Prog --panel codex,agy --review -- "Task: add rate limiting to the login route"
 "@
 }
 
@@ -78,13 +97,20 @@ function Show-List {
 # ----- argument parsing ------------------------------------------------------
 
 $agent       = ''
+$panel       = ''
 $contextFile = ''
 $codeDir     = ''
 $model       = ''
 $doContinue  = $false
 $raw         = $false
+$review      = $false
 $noLog       = $false
 $question    = ''
+
+# How to re-invoke ourselves for --panel children: run THIS script with the same
+# pwsh, so a panel is the exact same code path regardless of how it was launched.
+$SelfExe    = [Environment]::ProcessPath
+$SelfScript = $PSCommandPath
 
 $argv = @($args)
 $n    = $argv.Count
@@ -101,10 +127,13 @@ while ($i -lt $n) {
     elseif ($tok -like '--context=*') { $contextFile = $tok.Substring('--context='.Length) }
     elseif ($tok -eq '--code')    { if ($i + 1 -lt $n) { $i++; $codeDir = [string]$argv[$i] } else { Write-Err 'option --code needs a value'; exit 2 } }
     elseif ($tok -like '--code=*')    { $codeDir = $tok.Substring('--code='.Length) }
+    elseif ($tok -eq '--panel')   { if ($i + 1 -lt $n) { $i++; $panel = [string]$argv[$i] } else { Write-Err 'option --panel needs a value'; exit 2 } }
+    elseif ($tok -like '--panel=*')   { $panel = $tok.Substring('--panel='.Length) }
     elseif ($tok -eq '--model')   { if ($i + 1 -lt $n) { $i++; $model = [string]$argv[$i] } else { Write-Err 'option --model needs a value'; exit 2 } }
     elseif ($tok -like '--model=*')   { $model = $tok.Substring('--model='.Length) }
     elseif ($tok -eq '--continue') { $doContinue = $true }
     elseif ($tok -eq '--raw')      { $raw = $true }
+    elseif ($tok -eq '--review')   { $review = $true }
     elseif ($tok -eq '--no-log')   { $noLog = $true }
     elseif ($tok -eq '--') {
         $i++
@@ -126,12 +155,27 @@ while ($i -lt $n) {
 
 # ----- validation ------------------------------------------------------------
 
-if ([string]::IsNullOrEmpty($agent))    { Write-Err 'no agent given'; Show-UsageErr; exit 2 }
-if ($Agents -notcontains $agent)        { Write-Err "unknown agent: $agent (expected one of: $($Agents -join ' '))"; exit 2 }
 if ([string]::IsNullOrEmpty($question)) { Write-Err 'no question given'; Show-UsageErr; exit 2 }
 if ($contextFile -and -not (Test-Path -LiteralPath $contextFile -PathType Leaf))      { Write-Err "context file not found: $contextFile"; exit 2 }
 if ($codeDir     -and -not (Test-Path -LiteralPath $codeDir     -PathType Container)) { Write-Err "code dir not found: $codeDir"; exit 2 }
-if (-not (Get-Command $agent -CommandType Application -ErrorAction SilentlyContinue)) { Write-Err "agent '$agent' is not installed or not on PATH"; exit 127 }
+
+# $panelAgents is the resolved, validated list for --panel mode; empty otherwise.
+$panelAgents = @()
+if ($panel) {
+    if ($agent) { Write-Err 'use either <agent> or --panel, not both'; exit 2 }
+    foreach ($a in ($panel -split ',')) {
+        $a = $a.Trim()
+        if (-not $a) { continue }
+        if ($Agents -notcontains $a) { Write-WarnMsg "panel: unknown agent '$a' (expected one of: $($Agents -join ' ')); skipping"; continue }
+        if (-not (Get-Command $a -CommandType Application -ErrorAction SilentlyContinue)) { Write-WarnMsg "panel: agent '$a' is not installed or not on PATH; skipping"; continue }
+        if ($panelAgents -notcontains $a) { $panelAgents += $a }
+    }
+    if ($panelAgents.Count -eq 0) { Write-Err "panel: no usable advisors in '$panel'"; exit 2 }
+} else {
+    if ([string]::IsNullOrEmpty($agent)) { Write-Err 'no agent given'; Show-UsageErr; exit 2 }
+    if ($Agents -notcontains $agent)     { Write-Err "unknown agent: $agent (expected one of: $($Agents -join ' '))"; exit 2 }
+    if (-not (Get-Command $agent -CommandType Application -ErrorAction SilentlyContinue)) { Write-Err "agent '$agent' is not installed or not on PATH"; exit 127 }
+}
 
 # ----- recursion guard -------------------------------------------------------
 # Stop A -> B -> A consultation loops from burning tokens. Each call bumps
@@ -146,15 +190,111 @@ if ($depth -ge $maxDepth) {
 }
 $env:CONSILIUM_CALL_DEPTH = ($depth + 1)
 
+# ----- piped stdin -----------------------------------------------------------
+# If text was piped in, read it ONCE here in the hub; it becomes review material
+# in the prompt (## Input). Advisors are always started with their stdin closed,
+# so the hub is the only thing that consumes the pipe. The 10s cap mirrors the
+# bash -p/-f guard: a launcher that leaves stdin open but silent must not hang us.
+$stdinContent = ''
+if ([Console]::IsInputRedirected) {
+    try {
+        $readTask = [Console]::In.ReadToEndAsync()
+        if ($readTask.Wait(10000)) { $stdinContent = [string]$readTask.Result }
+    } catch { $stdinContent = '' }
+}
+
+# ----- panel mode: fan out to several advisors in parallel -------------------
+# Each advisor is this same script re-invoked, so it reuses ALL dispatch /
+# timeout / logging logic and writes its own transcript. Advisors never see each
+# other's answers — independence is the point; the hub synthesizes. Children
+# inherit CONSILIUM_CALL_DEPTH+1, so the depth guard still bounds onward calls.
+if ($panelAgents.Count -gt 0) {
+    # One effective context file for the children: optional --context plus
+    # optional piped stdin, merged once (children cannot read our consumed stdin).
+    $panelCtx    = ''
+    $panelCtxTmp = ''
+    if ($stdinContent) {
+        $panelCtxTmp = [System.IO.Path]::GetTempFileName()
+        $merged = ''
+        if ($contextFile) { $merged = (Get-Content -LiteralPath $contextFile -Raw) + "`n" }
+        $merged += $stdinContent + "`n"
+        Set-Content -LiteralPath $panelCtxTmp -Value $merged -Encoding UTF8 -NoNewline
+        $panelCtx = $panelCtxTmp
+    } elseif ($contextFile) {
+        $panelCtx = $contextFile
+    }
+
+    $loc = Get-Location
+    $childWd = if ($loc.Provider.Name -eq 'FileSystem') { $loc.ProviderPath } else { [System.IO.Directory]::GetCurrentDirectory() }
+
+    $children = @()
+    foreach ($a in $panelAgents) {
+        $childArgs = @('-NoProfile', '-File', $SelfScript, $a)
+        if ($panelCtx)   { $childArgs += @('--context', $panelCtx) }
+        if ($codeDir)    { $childArgs += @('--code', $codeDir) }
+        if ($model)      { $childArgs += @('--model', $model) }
+        if ($doContinue) { $childArgs += '--continue' }
+        if ($raw)        { $childArgs += '--raw' }
+        if ($review)     { $childArgs += '--review' }
+        if ($noLog)      { $childArgs += '--no-log' }
+        $childArgs += @('--', $question)
+
+        $psi = [System.Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $SelfExe
+        foreach ($ca in $childArgs) { $psi.ArgumentList.Add([string]$ca) }
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError  = $true
+        $psi.RedirectStandardInput  = $true
+        $psi.UseShellExecute        = $false
+        $psi.WorkingDirectory       = $childWd
+
+        $p = [System.Diagnostics.Process]::new()
+        $p.StartInfo = $psi
+        [void]$p.Start()
+        $p.StandardInput.Close()
+        $children += [pscustomobject]@{
+            Agent = $a
+            Proc  = $p
+            Out   = $p.StandardOutput.ReadToEndAsync()
+            Err   = $p.StandardError.ReadToEndAsync()
+        }
+    }
+
+    $panelStatus = 0
+    foreach ($c in $children) {
+        $c.Proc.WaitForExit()
+        if ($c.Proc.ExitCode -ne 0) { $panelStatus = 1 }
+    }
+
+    foreach ($c in $children) {
+        [Console]::Out.WriteLine('')
+        [Console]::Out.WriteLine("===== $($c.Agent) =====")
+        [Console]::Out.WriteLine('')
+        $o = [string]$c.Out.Result
+        $e = [string]$c.Err.Result
+        if ($o) { [Console]::Out.Write($o) }
+        if ($e) { [Console]::Error.Write($e) }
+    }
+    [Console]::Out.WriteLine('')
+
+    if ($panelCtxTmp) { Remove-Item -LiteralPath $panelCtxTmp -Force -ErrorAction SilentlyContinue }
+    exit $panelStatus
+}
+
 # ----- prompt assembly -------------------------------------------------------
 
 if ($raw) {
+    if ($review) { Write-WarnMsg '--review has no effect with --raw (raw sends the question verbatim); ignoring --review' }
     $prompt = $question
+    if ($stdinContent) { $prompt = "$prompt`n`n$stdinContent" }
 } else {
-    $prompt = $Preamble
+    $prompt = if ($review) { $ReviewPreamble } else { $Preamble }
     if ($contextFile) {
         $ctx = Get-Content -LiteralPath $contextFile -Raw
         $prompt = "$prompt`n`n## Context`n`n$ctx"
+    }
+    if ($stdinContent) {
+        $prompt = "$prompt`n`n## Input`n`n$stdinContent"
     }
     $prompt = "$prompt`n`n## Question`n`n$question"
 }

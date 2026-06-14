@@ -58,23 +58,44 @@ base because it is the only thing all four share with zero extra processes.
 ```
 consult <agent> [options] -- <question...>
 consult <agent> [options] "<question>"
+consult --panel <a,b,c> [options] -- <question...>
+<command> | consult <agent> [options] -- <question...>
 
 agents:  claude | agy | hermes | opencode | codex
 options:
+  --panel LIST     fan the question out to several advisors in parallel; print
+                   all answers back-to-back (independent, never a debate)
   --context FILE   inline a context file into the prompt
   --code DIR       give the agent a working directory for code context
   --model NAME     override the model
   --continue       continue the agent's previous session
+  --review         swap in an adversarial review preamble (RESULT vs TASK,
+                   ends with VERDICT: PASS/FAIL)
   --raw            send the question as-is (no advisor preamble)
   --no-log         do not write a transcript
   --list           list agents + whether installed
   -h, --help / --version
+stdin:  piped input is appended to the prompt under `## Input`; the advisor's own
+        stdin is closed (only the hub reads the pipe). Read only from a real pipe
+        or redirected file, never a bare/empty stdin (would hang on EOF).
 env:
   CONSILIUM_LOG_DIR   transcript dir (default ~/.consilium/log)
   CONSILIUM_TIMEOUT   per-call timeout if `timeout`/`gtimeout` present
   CONSILIUM_MAX_DEPTH consultation-chain depth limit (default 3; loop guard)
   CONSILIUM_LOG_KEEP  keep only the newest N transcripts (default 200; 0 = all)
 ```
+
+**Panel** (`--panel a,b,c`) is a thin orchestration layer, not a new transport:
+the hub re-invokes `consult` once per advisor in parallel (bash: backgrounded
+self-calls + `wait`; PowerShell: child `pwsh -File` processes), each reusing the
+full single-advisor dispatch/timeout/logging path and writing its own transcript.
+Answers print under `===== <agent> =====` separators. Advisors are **independent**
+— none sees another's reply — and the hub synthesizes. This is a deliberate star
+topology, not a debate mesh: letting advisors see each other anchors them into a
+confident-but-not-better consensus, the exact false signal a verification tool
+must avoid. Children inherit `CONSILIUM_CALL_DEPTH+1`, so the loop guard still
+bounds any onward consulting; unknown/uninstalled names are warned and skipped,
+duplicates collapsed.
 
 **Dispatch table:**
 
@@ -87,9 +108,14 @@ env:
 | codex | `codex exec --sandbox read-only [-m M] [-C DIR] "<prompt>"` |
 
 **Prompt assembly (unless `--raw`):** advisor preamble + optional `## Context`
-(file contents) + `## Question`. Preamble instructs the advisor: *"You are a peer
-AI advisor consulted by another agent. Give honest, direct analysis. Advice only
-— do not modify, create, or delete files."*
+(file contents) + optional `## Input` (piped stdin) + `## Question`. The default
+preamble instructs the advisor: *"You are a peer AI advisor consulted by another
+agent. Give honest, direct analysis. Advice only — do not modify, create, or
+delete files."* With `--review`, that preamble is replaced by an adversarial one:
+the advisor is told to find where the RESULT (the `## Input`/`--code` material)
+fails the TASK (the question + `## Context`), not to "assess quality" (which
+invites a rubber stamp), and to end with `VERDICT: PASS`/`VERDICT: FAIL`. `--raw`
+sends the question verbatim and ignores `--review`.
 
 **Behavior:** answer printed to stdout; a transcript (prompt + answer) saved to
 `~/.consilium/log/<ts>-<agent>-<pid>.md` unless `--no-log` (the PID suffix avoids
@@ -145,6 +171,20 @@ reaches `CONSILIUM_MAX_DEPTH` (default 3).
   the same review: `--map` / code-stripping (those belong to the hub building
   context at Layer 2, not the transport) and dropping `--model`/`--continue`
   (cheap, useful pass-throughs).
+- **Panel + pipe + review (multi-advisor feedback), from a dogfood design review
+  (`agy` + `opencode`, two independent non-Claude advisors, both consulted via
+  consilium itself):** add `--panel` (parallel independent fan-out), stdin →
+  `## Input`, and `--review` (adversarial PASS/FAIL preamble). Explicitly
+  **rejected: advisor-vs-advisor debate** (advisors seeing and rebutting each
+  other). Both reviewers converged: debate destroys the independence that is the
+  tool's entire value (anchoring/sycophancy → confident-but-wrong consensus) and
+  opens a prompt-injection propagation path (A's injected output becomes B's
+  context). The chosen shape keeps the star topology — independent advisors fan
+  out, the hub synthesizes — and stays "just a shell command": `--panel` is a thin
+  self-re-invoking layer, `--review` is only a preamble swap, stdin is read once
+  in the hub. Also rejected: a stateful "collaboration mode" / `--synthesize`
+  transport step (a second synthesis pass is just another plain `consult`, so it
+  needs no new flag or state).
 
 ## Roadmap
 

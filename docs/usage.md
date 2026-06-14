@@ -41,6 +41,31 @@ terminal whenever you like, no assistant involved:
 consult codex -- "Is a read-only sandbox enough to make a consultant safe?"
 ```
 
+## Asking several at once, piping in work, and reviewing
+
+Three shortcuts for richer feedback, all still ordinary shell commands:
+
+- **Ask a panel.** `--panel` sends one question to several advisors at the same
+  time. They answer independently — none of them sees the others' replies — and
+  you get all the answers back-to-back to weigh yourself.
+  ```sh
+  consult --panel codex,agy,opencode -- "Is this migration safe to run twice?"
+  ```
+- **Pipe work straight in.** Anything you pipe gets shown to the advisor as the
+  material to look at, under an `## Input` heading. No temp file needed.
+  ```sh
+  git diff | consult codex -- "Review these changes for bugs"
+  ```
+- **Review against a task.** `--review` tells the advisor to hunt for where the
+  result doesn't match what you asked for, and to end with a clear PASS or FAIL.
+  ```sh
+  git diff | consult --panel codex,agy --review -- "Task: add rate limiting to login"
+  ```
+
+Why a panel of independent answers rather than letting the advisors argue with
+each other? Because once they see each other's replies they start agreeing — you
+want separate, unanchored reads, and *you* do the weighing.
+
 ## How one exchange goes
 
 1. You're working with Claude and hit a decision point.
@@ -66,14 +91,22 @@ your agent hands it:
 ## Context        ← the file you passed with --context, pasted in as-is
 <that file's contents>
 
+## Input          ← anything you piped in (e.g. a diff), shown as review material
+<the piped text>
+
 ## Question
 <your question>
 ```
 
-Two ways to feed it context:
+(With `--review`, the fixed preamble is swapped for an adversarial one that asks
+the advisor to find where the result fails the task and to end with PASS/FAIL.)
+
+Three ways to feed it context:
 
 - **`--context FILE`** pastes the file's text straight into the prompt. Use it for a
   tight slice: a function and its callers, a plan, a diff, an error log.
+- **a pipe** (`git diff | consult …`) drops whatever you pipe under `## Input`. The
+  advisor's own stdin is closed; only your side reads the pipe.
 - **`--code DIR`** gives the other AI read-only access to a folder so it can look
   around the repo itself. That folder isn't pasted into the prompt.
 
