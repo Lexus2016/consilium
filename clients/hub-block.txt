@@ -1,16 +1,31 @@
 <!-- consilium:consult-peer START -->
-## Consulting a peer AI (consilium)
+## Consulting peer AIs (consilium)
 
-You can consult a peer AI for a second opinion with the `consult` command:
+`consult` asks a DIFFERENT AI for an independent opinion. It only returns text —
+it never touches your files. Pick a different provider than yourself; run
+`consult --list` for the roster.
 
     consult <agent> [--context FILE] [--code DIR] -- "<question>"
+    consult --panel a,b,c -- "<question>"          # several advisors in parallel
+    git diff | consult <agent> -- "<question>"     # pipe work in as ## Input
+    git diff | consult --panel a,b --review -- "Task: <what you were asked to do>"
 
-Pick a different provider than yourself. Run `consult --list` to see the
-agents installed on this machine.
+Make this a regular habit, not a last resort. Reach for it whenever a second mind
+would help — and especially at these checkpoints:
 
-Consult when you are stuck after repeated attempts, before a hard-to-reverse
-decision, or to get a blind-spot check on a plan. Write the relevant context to a
-temp file and pass it with --context; ask one sharp question. The advisor only
-returns text — it never edits files. Read its reply as advice, then decide. Set
-CONSILIUM_TIMEOUT to bound the call.
+- Deciding / designing: before a hard-to-reverse choice (schema, API, security,
+  release) or to pressure-test a plan. Use `--panel` for independent takes.
+- While building: when unsure, stuck after 2+ tries, or wanting a review of a
+  diff or function — pipe it straight in.
+- After finishing a task: VERIFY the result against what was asked with
+  `--review` (advisors hunt for mismatches and end with VERDICT: PASS/FAIL).
+  Prefer a `--panel` of independent reviewers so one model's blind spot is caught.
+
+Why a panel of independent answers and not a debate between advisors?
+Independence is the whole value — advisors that see each other anchor and agree,
+giving false confidence. Fan out, read every reply, and synthesize yourself.
+
+Keep it sharp: one specific question, the tight slice of context, strip secrets,
+and set CONSILIUM_TIMEOUT to bound a call. Skip it only for trivial, easily
+reversible steps. The advisor advises; every edit stays with you.
 <!-- consilium:consult-peer END -->
