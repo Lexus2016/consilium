@@ -138,6 +138,21 @@ the question:
 consult codex -- "Is it safe to do it this way?"
 ```
 
+**Three handy shortcuts.** Ask several advisors at once, hand work straight in, or
+have a finished result checked against the task:
+
+```
+consult --panel codex,agy -- "Is this migration safe to run twice?"
+git diff | consult codex -- "Review these changes for bugs"
+git diff | consult --panel codex,agy --review -- "Task: add rate limiting to login"
+```
+
+`--panel` asks several advisors **in parallel and independently** — they don't see
+each other's answers (that's the point; you weigh them yourself). A pipe hands your
+work in as the thing to look at. `--review` asks them to hunt for where a finished
+result doesn't match the task and to end with a clear **PASS or FAIL** — handy right
+before you call something done.
+
 ## Good to know
 
 - The other AI advises, it doesn't act. codex runs hard-sandboxed read-only; the

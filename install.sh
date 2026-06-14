@@ -128,6 +128,19 @@ if [ "$do_clients" -eq 1 ]; then
   sync_block "$HOME/.config/opencode/AGENTS.md"
   sync_block "$HOME/.gemini/GEMINI.md"
 
+  # hermes (Nous) has no dedicated dotfile like ~/.codex/AGENTS.md; it reads a
+  # home-level ~/AGENTS.md as global user instructions. Nothing else creates that
+  # file, so seed it (with the block) when hermes is installed, then keep it in
+  # sync on later runs. Harmless to other tools — the block is generic hub guidance.
+  home_agents="$HOME/AGENTS.md"
+  if [ -f "$home_agents" ]; then
+    sync_block "$home_agents"
+  elif command -v hermes >/dev/null 2>&1; then
+    printf '# Global agent instructions\n' > "$home_agents"
+    cat "$block_file" >> "$home_agents"
+    echo "  created block: $home_agents (home-global; read by hermes)"
+  fi
+
   skill_src="$repo_dir/clients/claude-code/consult-peer/SKILL.md"
   skill_dir="$HOME/.claude/skills/consult-peer"
   if [ -d "$HOME/.claude/skills" ] && [ -f "$skill_src" ]; then
