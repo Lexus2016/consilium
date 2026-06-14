@@ -74,6 +74,21 @@ instruction-file path above is the simplest and doesn't depend on a plugin forma
 
 ---
 
+## Hermes (`hermes`)
+
+Hermes (Nous) has no dedicated global dotfile like `~/.codex/AGENTS.md`; it reads a
+home-level `~/AGENTS.md` as global user instructions (alongside any project-level
+`AGENTS.md`).
+
+**Install.** `./install.sh --clients` seeds `~/AGENTS.md` with the Hub instruction
+block when `hermes` is installed, and keeps it in sync on later runs. To do it by
+hand, append the block from [`hub-block.txt`](hub-block.txt) to `~/AGENTS.md`.
+
+**Use it.** Ask Hermes to consult a peer; it runs `consult` as a shell command.
+Pick a non-Hermes advisor for an independent view.
+
+---
+
 ## Windows
 
 No shell installer for native Windows yet. Two options:
@@ -95,8 +110,9 @@ install or update it is:
 
     ./install.sh --clients
 
-That syncs the block into the agents you already use (codex/opencode/agy) and
-copies the Claude skill. To paste it by hand instead, copy the contents of
+That syncs the block into the agents you already use (codex/opencode/agy), seeds
+`~/AGENTS.md` for hermes, and copies the Claude skill. To paste it by hand instead,
+copy the contents of
 [`hub-block.txt`](hub-block.txt) into your agent's instruction file
 (`AGENTS.md`, `GEMINI.md`, …).
 
