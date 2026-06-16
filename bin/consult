@@ -342,6 +342,18 @@ case "$agent" in
     # request itself, so every flag must precede -p and the prompt must be the
     # final token. Verified: `agy --add-dir DIR -p "..."` answers correctly,
     # while `agy -p --add-dir DIR "..."` makes agy investigate "--add-dir".
+    # Isolate agy from this machine's ~/.gemini/GEMINI.md (global agent
+    # instructions: cheap-first / SSoT / [precision read]) so it answers as a
+    # clean advisor instead of pursuing its own tool loop. Auth lives in the OS
+    # keyring, so a GEMINI.md-free dir keeps login working. Verified:
+    # `agy --gemini_dir=<clean> -p ...` -> auth OK, zero pollution.
+    _agy_clean="${CONSILIUM_AGY_DIR:-$HOME/.consilium/agy-clean}"
+    if [ ! -e "$_agy_clean/google_accounts.json" ]; then
+      mkdir -p "$_agy_clean"
+      ln -sf "$HOME/.gemini/google_accounts.json" "$_agy_clean/google_accounts.json" 2>/dev/null || true
+      ln -sf "$HOME/.gemini/config" "$_agy_clean/config" 2>/dev/null || true
+    fi
+    cmd+=("--gemini_dir=$_agy_clean")
     [ "$do_continue" -eq 1 ] && cmd+=(-c)
     [ -n "$model" ] && cmd+=(--model "$model")
     [ -n "$code_dir" ] && cmd+=(--add-dir "$code_dir")
