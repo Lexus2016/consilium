@@ -75,6 +75,15 @@ case ":$PATH:" in
     ;;
 esac
 
+# ----- optional council (Python) availability --------------------------------
+if command -v python3 >/dev/null 2>&1; then
+  echo "council ok: \`consult council\` is available (python3 found)"
+else
+  echo
+  echo "note: \`consult council\` (multi-agent code audit) needs python3."
+  echo "      Core \`consult\` works without it; install python3 to enable council."
+fi
+
 # ----- optional: sync hub block + skill into installed agents ----------------
 
 if [ "$do_clients" -eq 1 ]; then

@@ -5,3 +5,7 @@
 .idea/
 .vscode/
 node_modules/
+
+# Python (council)
+__pycache__/
+*.pyc

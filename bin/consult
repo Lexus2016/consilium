@@ -34,10 +34,16 @@ usage:
   $PROG <agent> [options] -- <question...>
   $PROG <agent> [options] "<question>"
   $PROG --panel <a,b,c> [options] -- <question...>
+  $PROG council -f <file> [-f <file>...] -q <question>
   <command> | $PROG <agent> [options] -- <question...>
 
 agents:
   claude | agy | hermes | opencode | codex
+
+council (needs python3):
+  $PROG council audits CODE with a multi-agent panel (different providers),
+  synthesizes one answer, and verifies every finding against its file:line.
+  EXPENSIVE (~minutes, several paid calls) — high-stakes code questions only.
 
 options:
   --panel LIST     ask several advisors in parallel (comma-separated), each
@@ -119,6 +125,22 @@ fi
 if [ "$#" -eq 0 ]; then
   usage >&2
   exit 2
+fi
+
+# Council mode: `consult council [-f FILE]... -q "Q"` runs the multi-agent council
+# (Python) instead of a single advisor. Intercepted BEFORE the option parser so
+# the council's own flags (-f/-q) are handled by the council CLI, not consult.
+# No recursion: council members are spawned as `consult agy|opencode|hermes`.
+if [ "${1:-}" = "council" ]; then
+  shift
+  _t="$0"; [ -L "$_t" ] && _t="$(readlink "$_t")"
+  _root="$(cd "$(dirname "$_t")/.." && pwd)"
+  if ! command -v python3 >/dev/null 2>&1; then
+    err "council mode needs python3 on PATH"; exit 127
+  fi
+  exec env PYTHONPATH="$_root${PYTHONPATH:+:$PYTHONPATH}" \
+           COUNCIL_CONFIG="${COUNCIL_CONFIG:-$_root/config/council.json}" \
+           python3 -m council audit "$@"
 fi
 
 while [ "$#" -gt 0 ]; do

@@ -1,0 +1,40 @@
+{
+  "_comment": "quorum config. A 'profile' maps an OpenAI model name to a council policy. working_dir is the code the panel reads (read-only). Override at startup with --working-dir / --port.",
+
+  "working_dir": ".",
+  "host": "127.0.0.1",
+  "port": 11435,
+  "max_concurrent_panels": 2,
+  "member_timeout_seconds": 900,
+  "heartbeat_seconds": 10,
+
+  "_strip_patterns_doc": "Regexes matched at the START of an answer to strip boilerplate that advisor agents prepend because of this machine's global agent instructions (activation token + SSoT line). Set to [] on a clean environment.",
+  "strip_patterns": [
+    "\\[STATE\\][^\\n]*",
+    "SSoT:[^\\n]*",
+    "\\[precision read\\][^\\n]*",
+    "\\[cheap [a-z]+\\][^\\n]*"
+  ],
+
+  "_profiles_doc": "Profiles are POLICIES, not fixed rosters. recipe + code_access + panel_size only; the concrete panel/synth are resolved at runtime by roster.py from whatever agents `consult --list` reports installed, with cross-provider diversity. Fewer available agents = smaller council (down to single-agent), never a crash. To pin a roster, add explicit panel/synthesizer/drafter/reviewers and it is used as-is.",
+  "profiles": {
+    "consilium-verify": {
+      "_doc": "Draft -> adversarial review -> synthesize. POLICY: roster resolved at runtime from available code-reader agents (degrades to parallel if <2 answerers). For real code audits prefer `quorum audit` (orchestrator embeds code as text).",
+      "recipe": "verify",
+      "code_access": true,
+      "panel_size": 3
+    },
+    "consilium-budget": {
+      "_doc": "Parallel independent answers + synthesis, code_access=false. The profile `quorum audit` uses: code is embedded in the question as text, so any installed agent can read it. POLICY: roster resolved from all available agents.",
+      "recipe": "parallel",
+      "code_access": false,
+      "panel_size": 2
+    },
+    "consilium-frontier": {
+      "_doc": "Strongest readers, parallel + synthesis, code_access=true via --code. POLICY: roster resolved at runtime, restricted to code-reader agents (agy/claude/codex).",
+      "recipe": "parallel",
+      "code_access": true,
+      "panel_size": 3
+    }
+  }
+}
