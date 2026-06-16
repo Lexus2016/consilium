@@ -66,6 +66,25 @@ Skip it only for trivial, easily-reversible steps — a second opinion there is 
    - If it agrees, that is signal, not proof; two models can share a blind spot.
    - All edits stay with you. The transcript is saved under `~/.consilium/log/`.
 
+## The council — for high-stakes code audits
+
+One advisor gives a second opinion; the **council** runs a whole panel for an
+audit you must get right. `consult council` embeds the code as text, fans it to
+several agents on different providers, synthesizes one answer, and **verifies
+every finding against its `file:line`** — a fabricated or out-of-range citation is
+flagged, so hallucinated findings don't slip through.
+
+```sh
+consult council -f src/auth.js -q "find security bugs and race conditions"
+consult council -f a.js -f b.js -q "is this retry logic correct"
+```
+
+It is **expensive** (a multi-agent run takes minutes and several paid calls), so
+reserve it for questions that earn it: a subtle bug, migration safety, a security
+boundary. Read the `SOURCE VERIFICATION` block — apply only `[OK]` findings;
+`[BAD]` is a hallucinated citation. The council never edits files; you apply the
+fixes. Needs `python3` (the core `consult` stays a zero-dependency shell tool).
+
 ## Safety
 
 The advisor is meant to advise, not act: codex runs hard-sandboxed under

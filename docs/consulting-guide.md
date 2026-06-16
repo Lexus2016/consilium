@@ -93,6 +93,19 @@ git diff | consult --panel codex,agy --review -- "Task: add rate limiting to the
 You stay the moderator: independent advisors fan out, you weigh and synthesize.
 Star topology, never a debate mesh.
 
+## The council — when one read isn't enough
+
+For a code audit you must get right, escalate from one advisor to the council:
+
+    consult council -f <file> [-f <file>...] -q "<question>"
+
+It hands the code (as text) to several agents on distinct providers, has each
+audit independently, synthesizes one answer, and verifies every finding against
+its cited `file:line` — apply only the `[OK]`-verified ones, drop any `[BAD]`
+(hallucinated) citation. It is expensive (minutes, several paid calls), so reserve
+it for high-stakes questions: a subtle bug, migration safety, a security boundary.
+It never edits files; you apply the fixes. Needs `python3` (core `consult` does not).
+
 ## Read the reply as advice, not orders
 
 What comes back is one opinion. Weigh it:

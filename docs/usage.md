@@ -66,6 +66,23 @@ Why a panel of independent answers rather than letting the advisors argue with
 each other? Because once they see each other's replies they start agreeing — you
 want separate, unanchored reads, and *you* do the weighing.
 
+## When one opinion isn't enough — the council
+
+A single advisor is one read. For a code question you have to get right, the
+**council** runs a whole panel. `consult council` takes your files, hands the code
+(as text) to several agents on different providers, has them audit independently,
+synthesizes one answer, and checks every finding against the exact `file:line` it
+cites — a made-up or out-of-range line is flagged, so a hallucinated finding can't
+slip through.
+
+    consult council -f src/auth.js -q "find security bugs and race conditions"
+    consult council -f a.js -f b.js -q "is this retry logic correct"
+
+It costs more than a single ask — minutes, and several paid calls — so save it for
+questions that earn it: a subtle bug, migration safety, a security boundary. It
+hands back located, verified findings; you apply them (it never edits files). The
+council needs `python3`; the core `consult` stays a zero-dependency shell tool.
+
 ## How one exchange goes
 
 1. You're working with Claude and hit a decision point.

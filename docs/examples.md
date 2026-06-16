@@ -40,6 +40,17 @@ You're not convinced your agent's idea is the right one.
 
 > "I'm not sold on this. Get an independent opinion from codex."
 
+## A high-stakes code audit
+
+A security-sensitive file is about to ship, and one opinion isn't enough.
+
+> "Run the council on src/auth.js — find security bugs and race conditions."
+
+Your agent runs `consult council -f src/auth.js -q "…"`: several AIs on different
+providers audit the code independently, one synthesizes the result, and every
+finding is verified against its `file:line` before you see it. It's expensive — a
+few minutes and several paid calls — but it's for the things that have to be right.
+
 ## What happens every time
 
 The other AI answers, your agent shows you the reply and says what it makes of it,

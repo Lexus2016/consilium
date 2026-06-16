@@ -28,4 +28,15 @@ giving false confidence. Fan out, read every reply, and synthesize yourself.
 Keep it sharp: one specific question, the tight slice of context, strip secrets,
 and set CONSILIUM_TIMEOUT to bound a call. Skip it only for trivial, easily
 reversible steps. The advisor advises; every edit stays with you.
+
+For a high-stakes CODE audit, escalate from one opinion to the council:
+
+    consult council -f <file> [-f <file>...] -q "<question>"
+
+The council runs several agents on different providers over the code (embedded as
+text), synthesizes one answer, and VERIFIES every finding against its `file:line`
+(a fabricated or out-of-range citation is flagged). It is EXPENSIVE (minutes,
+several paid calls) — reserve it for a subtle bug, migration safety, or a security
+boundary, not routine checks. It returns located, verified findings; you apply
+them (it never edits files). Needs python3.
 <!-- consilium:consult-peer END -->
