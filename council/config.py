@@ -1,4 +1,4 @@
-"""Configuration loading and validation for quorum.
+"""Configuration loading and validation for council.
 
 Config is plain JSON (stdlib only, works on any Python 3) so there is nothing to
 install and the format is obvious. A profile maps an OpenAI "model" name to a
@@ -167,7 +167,7 @@ def load_config(path: str | None) -> Config:
     """Load config from JSON, falling back to built-in defaults.
 
     Explicit fields in the file override defaults; if no 'profiles' key is given,
-    the three built-in profiles are used so the Quorum works out of the box.
+    the three built-in profiles are used so the council works out of the box.
     """
     raw: dict[str, Any] = {}
     if path and os.path.exists(path):

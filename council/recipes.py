@@ -34,7 +34,7 @@ Progress = Callable[[str], None]
 
 
 @dataclass
-class QuorumResult:
+class CouncilResult:
     final_text: str
     model: str
     members: list[MemberResult] = field(default_factory=list)
@@ -106,7 +106,7 @@ def flatten_messages(messages: list[dict]) -> tuple[str, str]:
 
 
 def _write_temp(text: str, suffix: str = ".md") -> str:
-    fd, path = tempfile.mkstemp(prefix="quorum-", suffix=suffix)
+    fd, path = tempfile.mkstemp(prefix="council-", suffix=suffix)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text)
     return path
@@ -144,7 +144,7 @@ def run_recipe(
     member_timeout: int,
     registry: ProcessRegistry,
     progress: Progress = lambda _s: None,
-) -> QuorumResult:
+) -> CouncilResult:
     code_dir = working_dir if code_access else None
     ctx_file = _write_temp(context) if context else None
     try:
@@ -205,7 +205,7 @@ def _run_member(
 def _run_parallel(
     profile, question, ctx_file, code_dir, working_dir,
     member_timeout, registry, progress,
-) -> QuorumResult:
+) -> CouncilResult:
     progress(f"panel of {len(profile.panel)} answering independently")
 
     def ask(agent):
@@ -218,7 +218,7 @@ def _run_parallel(
     ok = [m for m in members if m.ok]
 
     if registry.cancelled:
-        return QuorumResult("(request cancelled)", profile.name, members, note="cancelled")
+        return CouncilResult("(request cancelled)", profile.name, members, note="cancelled")
     if not ok:
         return _all_failed_result(profile.name, members)
 
@@ -231,14 +231,14 @@ def _run_parallel(
 def _run_verify(
     profile, question, ctx_file, code_dir, working_dir,
     member_timeout, registry, progress,
-) -> QuorumResult:
+) -> CouncilResult:
     progress(f"draft by {profile.drafter}")
     draft = _run_member(
         profile.drafter, question, role="draft", context_file=ctx_file,
         code_dir=code_dir, timeout_seconds=member_timeout, registry=registry,
     )
     if registry.cancelled:
-        return QuorumResult("(request cancelled)", profile.name, [draft], note="cancelled")
+        return CouncilResult("(request cancelled)", profile.name, [draft], note="cancelled")
     if not draft.ok:
         # No draft to review: degrade to a parallel run so the request still
         # produces something useful.
@@ -268,7 +268,7 @@ def _run_verify(
     members = [draft] + reviews
 
     if registry.cancelled:
-        return QuorumResult("(request cancelled)", profile.name, members, note="cancelled")
+        return CouncilResult("(request cancelled)", profile.name, members, note="cancelled")
 
     progress(f"synthesizing final via {profile.synthesizer}")
     synth = _synthesize(
@@ -320,15 +320,15 @@ def _synthesize(
 # Finalization
 # --------------------------------------------------------------------------- #
 
-def _all_failed_result(model: str, members: list[MemberResult]) -> QuorumResult:
+def _all_failed_result(model: str, members: list[MemberResult]) -> CouncilResult:
     errs = "; ".join(f"{m.agent}: {m.error}" for m in members)
-    return QuorumResult(
+    return CouncilResult(
         f"All panel members failed. ({errs})", model, members,
         note="all-members-failed",
     )
 
 
-def _finalize(profile, synth, ok_inputs, members, working_dir) -> QuorumResult:
+def _finalize(profile, synth, ok_inputs, members, working_dir) -> CouncilResult:
     failed = [m for m in members if not m.ok and m.role in ("panel", "draft", "review")]
     note_bits = []
     if failed:
@@ -351,7 +351,7 @@ def _finalize(profile, synth, ok_inputs, members, working_dir) -> QuorumResult:
             return _all_failed_result(profile.name, members)
 
     apply_note = _git_apply_check(working_dir, final_text)
-    return QuorumResult(
+    return CouncilResult(
         final_text=final_text,
         model=profile.name,
         members=members,

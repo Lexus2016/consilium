@@ -98,10 +98,10 @@ def _terminate(proc: subprocess.Popen) -> None:
 def _child_env() -> dict[str, str]:
     """Environment for spawned members, with a recursion-guard marker.
 
-    If a panel member is itself an agent that could be pointed back at this
-    Quorum, this marker is the cheap in-band signal that we are already inside a
-    council run. (A member must still be configured to use a REAL provider, not
-    this Quorum's base_url — see docs/setup.md. There is no perfect guard.)
+    COUNCIL_INTERNAL signals a member that it is already running inside a council,
+    so an agent that could itself invoke `consult council` knows not to recurse.
+    (Best-effort: members are spawned as `consult agy|opencode|hermes`, never
+    `consult council`, so recursion needs a member explicitly wired to call it.)
     """
     env = dict(os.environ)
     env["COUNCIL_INTERNAL"] = "1"

@@ -1,14 +1,14 @@
-"""quorum — a local OpenAI-compatible endpoint backed by a council of AI agents.
+"""council — a multi-agent code-audit council (reached as `consult council`).
 
-The "model" name a client picks selects a routing POLICY (which panel of agents
-and which synthesis recipe), not a real model. The Quorum fans the task out to
-several independent coding-agent CLIs (via the `consult` tool), then a separate
-synthesizer agent reconciles their answers into one peer-verified reply that is
-returned in the normal OpenAI response shape.
+You give it source files + a question; it embeds the code as text, fans the audit
+out to several independent coding-agent CLIs (via the `consult` tool) on distinct
+providers, a separate synthesizer reconciles their findings into one answer, and
+every finding is mechanically verified against its cited file:line.
 
-Positioning (decided after an independent 3-AI review): this is an explicit,
-long-running ADVISORY ORACLE for expensive / high-stakes questions — not a
-transparent drop-in for every call of an agent loop.
+Positioning (decided after an independent 3-AI review): an explicit, long-running
+ADVISORY ORACLE for expensive / high-stakes code questions — not a transparent
+drop-in for every step of an agent loop. The consumer applies the findings; the
+council never edits files.
 """
 
 __version__ = "0.1.0"

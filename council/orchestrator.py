@@ -176,7 +176,7 @@ def run_audit(
     # Resolve the POLICY profile into a concrete roster from live availability.
     # Fewer agents -> smaller council; one agent -> run it directly; none -> error.
     concrete, single_agent, roster_note = resolve_roster(profile, list_available_agents())
-    print(f"[quorum] {roster_note}", file=sys.stderr)
+    print(f"[council] {roster_note}", file=sys.stderr)
 
     registry = ProcessRegistry()
     try:
@@ -185,7 +185,7 @@ def run_audit(
                 concrete, question, "",
                 working_dir=cfg.working_dir_abs, code_access=False,
                 member_timeout=member_timeout, registry=registry,
-                progress=lambda msg: print(f"[quorum] {msg}", file=sys.stderr),
+                progress=lambda msg: print(f"[council] {msg}", file=sys.stderr),
             )
             raw_text, members, run_note = result.final_text, result.members, result.note
         elif single_agent is not None:
