@@ -103,8 +103,13 @@ def resolve_roster(
             "a council needs >=2 distinct providers"
         )
 
-    synth = diverse[0]
-    answerers = diverse[1: 1 + max(1, policy.panel_size)]
+    # Prefer a NON-agy synthesizer: agy (Antigravity) tends to drift into
+    # "explore the workspace / find panel material" when synthesizing. Put it on
+    # the panel (where it audits well) and let a steadier agent reconcile the
+    # text. Falls back to diverse[0] if agy is the only option.
+    non_agy = [a for a in diverse if a != "agy"]
+    synth = non_agy[0] if non_agy else diverse[0]
+    answerers = [a for a in diverse if a != synth][: max(1, policy.panel_size)]
 
     if policy.recipe == "verify" and len(answerers) >= 2:
         concrete = replace(

@@ -20,6 +20,16 @@ from dataclasses import dataclass
 
 CONSULT_BIN = os.environ.get("COUNCIL_CONSULT_BIN", "consult")
 
+# Neutral working dir for members without an explicit --code dir. Spawning in an
+# empty dir stops agents (notably agy/Antigravity) from "listing the workspace"
+# instead of answering the code-in-text question. Created lazily.
+_SCRATCH_DIR = os.path.join(os.path.expanduser("~"), ".consilium", "council-scratch")
+
+
+def _scratch_cwd() -> str:
+    os.makedirs(_SCRATCH_DIR, exist_ok=True)
+    return _SCRATCH_DIR
+
 
 def fake_mode() -> bool:
     return os.environ.get("COUNCIL_FAKE", "") not in ("", "0", "false", "False")
@@ -146,7 +156,7 @@ def run_agent(
             stderr=subprocess.DEVNULL,
             text=True,
             env=env,
-            cwd=code_dir or None,
+            cwd=code_dir or _scratch_cwd(),
         )
     except FileNotFoundError:
         return MemberResult(
