@@ -117,3 +117,5 @@ copy the contents of
 (`AGENTS.md`, `GEMINI.md`, …).
 
 The block carries no agent list — `consult --list` is the runtime source of truth.
+It also points agents at `consult council` — the multi-agent code-audit mode — for
+high-stakes questions (that mode needs `python3`; core `consult` does not).

@@ -129,6 +129,27 @@ Linux/WSL/Git Bash. The PowerShell port targets pwsh 7+ and implements the
 timeout natively (no external `timeout`/`gtimeout`). Both close the advisor's
 stdin to avoid TTY hangs — codex reads stdin in addition to its prompt arg.
 
+## The council mode (`consult council`)
+
+`consult council` is a second, opt-in front: instead of one advisor it runs a
+PANEL over code. It is a Python package (`council/`) that `bin/consult` execs; the
+core `consult` shell stays zero-dependency.
+
+- **Policy profiles**, not fixed rosters — a profile is recipe + code_access +
+  panel_size; `council/roster.py` resolves the concrete panel/synth at runtime
+  from `consult --list` (cross-provider diversity, `claude` excluded by default).
+  Fewer agents → smaller council; one → single-agent; none → a clear error.
+- **Code-in-text** — files are embedded (line-numbered) in the question, so members
+  that ignore `--code` still read it. Members spawn as `consult <agent>`.
+- **Recipes** — `parallel` (independent answers → synth) or `verify` (draft →
+  adversarial review → synth). A SEPARATE synthesizer reconciles; `agy` is kept off
+  synth (it drifts as synthesizer) and used on the panel instead.
+- **SOURCE verification** — every finding must cite `file:line`; the orchestrator
+  re-checks each against the real file and flags fabricated / out-of-range ones.
+- Read-only — returns text + verified findings; the consumer applies the edits.
+
+Needs `python3`. Details live in the `council/` package.
+
 ## Safety defaults
 
 A consultant **advises, never acts** — but how strongly that is *enforced*
