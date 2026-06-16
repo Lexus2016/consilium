@@ -161,6 +161,16 @@ audit the code independently, a separate agent reconciles them into one answer, 
 every finding is **mechanically verified against its `file:line`** — a fabricated or
 out-of-range citation is flagged, so hallucinations don't slip through.
 
+**You ask for it in plain words** — the agent convenes the council itself:
+
+> "This touches auth — convene the council before I merge."
+
+> "Have a panel of different AIs audit this migration for data loss."
+
+> "I keep flip-flopping on this lock ordering — put it to the council."
+
+**Or run it yourself** — one or more files, then the question:
+
 ```
 consult council -f src/auth.js -q "find security bugs and race conditions"
 consult council -f a.js -f b.js -q "is this retry logic correct"
