@@ -117,6 +117,28 @@ $n    = $argv.Count
 
 if ($n -eq 0) { Show-UsageErr; exit 2 }
 
+# Council mode: `consult council -f FILE -q "Q"` runs the Python council instead of
+# a single advisor. Intercepted before the option parser so the council's own flags
+# (-f/-q) go to the council CLI, not consult. No recursion (members spawn as
+# `consult agy|opencode|hermes`, never `consult council`).
+if ($argv[0] -eq 'council') {
+    $py = if (Get-Command python3 -ErrorAction SilentlyContinue) { 'python3' }
+          elseif (Get-Command python -ErrorAction SilentlyContinue) { 'python' }
+          else { $null }
+    if (-not $py) { Write-Err 'council mode needs python3 (or python) on PATH'; exit 127 }
+    $scriptPath = $PSCommandPath
+    try {
+        $li = Get-Item $scriptPath -ErrorAction Stop
+        if ($li.LinkType -eq 'SymbolicLink' -and $li.Target) { $scriptPath = $li.Target }
+    } catch {}
+    $root = Split-Path (Split-Path $scriptPath -Parent) -Parent
+    $env:PYTHONPATH = if ($env:PYTHONPATH) { "$root$([IO.Path]::PathSeparator)$($env:PYTHONPATH)" } else { $root }
+    if (-not $env:COUNCIL_CONFIG) { $env:COUNCIL_CONFIG = Join-Path $root 'config/council.json' }
+    $rest = if ($n -gt 1) { $argv[1..($n - 1)] } else { @() }
+    & $py -m council audit @rest
+    exit $LASTEXITCODE
+}
+
 $i = 0
 while ($i -lt $n) {
     $tok = [string]$argv[$i]
