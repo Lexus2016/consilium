@@ -10,7 +10,9 @@
     "\\[STATE\\][^\\n]*",
     "SSoT:[^\\n]*",
     "\\[precision read\\][^\\n]*",
-    "\\[cheap [a-z]+\\][^\\n]*"
+    "\\[cheap [a-z]+\\][^\\n]*",
+    "Query: You are a peer AI advisor[^\\n]*",
+    "You are a peer AI advisor[^\\n]*"
   ],
 
   "_profiles_doc": "Profiles are POLICIES, not fixed rosters. recipe + code_access + panel_size only; the concrete panel/synth are resolved at runtime by roster.py from whatever agents `consult --list` reports installed, with cross-provider diversity. Fewer available agents = smaller council (down to single-agent), never a crash. To pin a roster, add explicit panel/synthesizer/drafter/reviewers and it is used as-is.",

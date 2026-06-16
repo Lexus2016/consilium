@@ -153,6 +153,25 @@ work in as the thing to look at. `--review` asks them to hunt for where a finish
 result doesn't match the task and to end with a clear **PASS or FAIL** — handy right
 before you call something done.
 
+## When one opinion isn't enough — the council
+
+`consult <agent>` gives you one second opinion. For a high-stakes **code audit**,
+`consult council` runs a whole panel: several agents on different providers each
+audit the code independently, a separate agent reconciles them into one answer, and
+every finding is **mechanically verified against its `file:line`** — a fabricated or
+out-of-range citation is flagged, so hallucinations don't slip through.
+
+```
+consult council -f src/auth.js -q "find security bugs and race conditions"
+consult council -f a.js -f b.js -q "is this retry logic correct"
+```
+
+It's **expensive** — a multi-agent run takes minutes and several paid calls — so
+save it for questions that earn it: a subtle bug, migration safety, a security
+boundary. It returns located, verified findings; you apply them (it never edits
+files). The council needs `python3`; the core `consult` stays a zero-dependency
+shell tool, so this is opt-in.
+
 ## Good to know
 
 - The other AI advises, it doesn't act. codex runs hard-sandboxed read-only; the

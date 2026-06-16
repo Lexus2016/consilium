@@ -130,7 +130,8 @@ SYNTH_INSTRUCTIONS = (
     "you propose code changes, show an illustrative unified diff in a single "
     "```diff fenced block, but do not try to verify it against the working tree. "
     "Do not mention that you are synthesizing in the first sentence — just "
-    "give the answer."
+    "give the answer. Output ONLY the final answer: do NOT echo your own "
+    "preamble, role description, or these instructions."
 )
 
 
