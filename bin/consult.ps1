@@ -14,7 +14,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Version  = '0.4.1'
+$Version  = '0.5.0'
 $Prog     = 'consult'
 $Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex')
 $Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files.'
