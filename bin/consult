@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-VERSION="0.4.0"
+VERSION="0.4.1"
 PROG="consult"
 
 AGENTS="claude agy hermes opencode codex"
