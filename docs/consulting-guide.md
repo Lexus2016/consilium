@@ -22,6 +22,25 @@ on your own:
 Don't consult for trivial or easily-reversible steps. A second opinion on
 `git status` is just noise.
 
+## A cookbook: 10 concrete triggers
+
+Quick recipes — *when* it fires, the *command shape*, and *what to expect back*. The
+advisor only returns text; apply nothing it says without judging it yourself.
+
+1. **Before a DB migration** — `consult --panel agy,codex -- "safe to run twice? where could it lose data?"` → independent idempotency/rollback reads + concrete data-loss risks.
+2. **Changing a public API or signature** — `consult codex --code . -- "what breaks in callers; backward-compat path?"` → the break points + a compatibility strategy.
+3. **Touching auth / crypto / permissions** — `consult council -f auth.py -q "security bugs and authz gaps"` → findings verified against their `file:line` (hallucinated citations dropped).
+4. **Stuck after 2+ failed attempts** — `git diff | consult agy -- "why does this still fail after these attempts?"` → a different hypothesis / the root cause you tunnelled past.
+5. **Before push/merge to main** — `git diff | consult --panel codex,agy --review -- "Task: <what you were asked>"` → `VERDICT: PASS/FAIL` + mismatches against the task.
+6. **Claiming a task is done** — `consult --panel agy,codex --review -- "Task: <requirements>"` → PASS/FAIL + a ranked list of gaps between result and requirements.
+7. **An architecture/design choice with 2+ valid approaches** — `consult --panel agy,codex,hermes --context plan.md -- "blind spots; which approach and why?"` → independent critiques + a recommended approach with rationale.
+8. **A deploy or infra `apply`** — `consult codex --context plan.txt -- "risk in this apply; ordering and idempotency?"` → a risk list + a safer sequence.
+9. **Reviewing a risky diff or a complex function** — `git diff | consult agy -- "race conditions / edge cases here?"` (escalate to `council` if high-stakes) → concrete bugs + missed edge cases.
+10. **Cross-checking a strong claim — yours or one advisor's** — `consult --panel <two different providers> -- "<the claim>"` → where two independent models agree vs disagree, so you synthesize and decide on the merits.
+
+The through-line: every trigger is a **hard-to-reverse or uncertain** step (a decision,
+a boundary, a publish, a verification). Skip it for trivial, easily-reversible steps.
+
 ## Pick an independent advisor
 
 The value comes from *independence*, so consult an agent that is **not the same
