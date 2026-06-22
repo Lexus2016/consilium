@@ -201,6 +201,12 @@ verifiable, using the AI tools you already have.
 | Cost | Only the model calls you already pay for — no markup | One bundled bill — flat-rate ($20–$200/mo) or metered | Sum of every panel call + the judge (~3× a single call) |
 | Best for | Code/design review where you stay in control and verify | One-call hidden orchestration | High-stakes research/critique via API |
 
+**Quality vs efficiency — where each wins and what it pays for:**
+
+- **consilium** — *Strength:* real cross-vendor independence and findings checked against your actual code; you pay only for calls you already make. *Weakness:* quality depends on the advisors you have installed and on the hub steering them — there is no built-in auto-routing, so a careless question gets a careless panel.
+- **Sakana Fugu** — *Strength:* a trained orchestrator picks, runs, and verifies the models for you, so one call can beat a single frontier model. *Weakness:* the machinery is hidden and the fan-out is costly (a request can burn 4–6× the tokens), with vendor lock-in and no EU availability.
+- **OpenRouter Fusion** — *Strength:* a 3–5 model panel plus a judge in one drop-in API call, strong on hard research and critique. *Weakness:* you pay every panel call plus the judge (~3× a single call) and add latency, with no check against your real codebase.
+
 The short version: Fugu and Fusion sell **convenience** (one endpoint, hidden machinery,
 their bill); consilium gives **control** (your machine, your providers, every answer
 visible, findings checked against the real code).
