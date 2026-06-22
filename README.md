@@ -182,6 +182,29 @@ boundary. It returns located, verified findings; you apply them (it never edits
 files). It ends with a single `COUNCIL STATUS: COMPLETE | INCOMPLETE` line — and a matching exit code — so your assistant sees at a glance whether to act on the answer or come back with a follow-up. The council needs `python3`; the core `consult` stays a zero-dependency
 shell tool, so this is opt-in.
 
+## How it compares — consilium vs Fugu vs OpenRouter Fusion
+
+Fugu and OpenRouter Fusion are hosted services that hide a panel of models behind one
+paid endpoint. consilium keeps the panel in **your** hands — local, transparent, and
+verifiable, using the AI tools you already have.
+
+| | **consilium** (this project) | **Sakana Fugu** | **OpenRouter Fusion** |
+|---|---|---|---|
+| What it is | A local CLI for a second opinion from a *different* AI | A hosted orchestrator **model** | A hosted multi-model **API** |
+| Where it runs | Your machine, your own signed-in AI CLIs | Vendor cloud, one endpoint | Vendor cloud, one endpoint |
+| Models per question | You choose: one, or an independent panel | A pool the model picks (hidden) | 3–5 models in parallel |
+| Who synthesizes | **You / your agent** (the hub), with full task context | The trained model, internally | A judge model returns structured analysis; your model writes the final answer |
+| Transparency | You see **every** advisor's raw answer | Hidden machinery; one answer out | Panel answers + a structured judge report |
+| Verifies findings against your code | Yes — every finding checked against `file:line` | Internal / unspecified | No |
+| Touches your files | Read-only advice; never edits | Text API | Text API |
+| Dependencies | Zero-dependency shell core (+ `python3` for the council) | Vendor API | Vendor API (OpenAI-compatible) |
+| Cost | Only the model calls you already pay for — no markup | Premium, metered | Sum of every panel call + the judge (~3× a single call) |
+| Best for | Code/design review where you stay in control and verify | One-call hidden orchestration | High-stakes research/critique via API |
+
+The short version: Fugu and Fusion sell **convenience** (one endpoint, hidden machinery,
+their bill); consilium gives **control** (your machine, your providers, every answer
+visible, findings checked against the real code).
+
 ## Good to know
 
 - The other AI advises, it doesn't act. codex runs hard-sandboxed read-only; the
