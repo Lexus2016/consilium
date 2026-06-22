@@ -203,19 +203,46 @@ def _run_member(
     return result
 
 
+# Perspective-diverse panel: each member of a multi-member council leads with a
+# DIFFERENT audit lens so the panel covers more of the defect space instead of all
+# members flagging the same obvious issues. Soft PRIMARY focus, not blinders -- a
+# member still reports critical issues outside its lens. Lenses are applied only
+# when there are >= 2 members, so a lone auditor is never narrowed.
+AUDIT_LENSES = (
+    "correctness, control flow, and edge cases",
+    "security: input validation, authorization, injection, and unsafe data handling",
+    "concurrency, race conditions, resource leaks, and performance",
+    "API contracts, error handling, and backward compatibility",
+)
+
+
+def _with_lens(prompt: str, index: int) -> str:
+    """Append a soft per-member audit lens to a member's prompt."""
+    lens = AUDIT_LENSES[index % len(AUDIT_LENSES)]
+    return (
+        f"{prompt}\n\nYOUR PRIMARY AUDIT LENS: lead with {lens}. Still flag any "
+        "critical issue you notice outside this lens, but make this your main "
+        "focus so the panel covers more ground than if everyone looked at the "
+        "same things."
+    )
+
+
 def _run_parallel(
     profile, question, ctx_file, code_dir, working_dir,
     member_timeout, registry, progress,
 ) -> CouncilResult:
     progress(f"panel of {len(profile.panel)} answering independently")
+    use_lenses = len(profile.panel) >= 2
 
-    def ask(agent):
+    def ask(item):
+        i, agent = item
+        q = _with_lens(question, i) if use_lenses else question
         return _run_member(
-            agent, question, role="panel", context_file=ctx_file,
+            agent, q, role="panel", context_file=ctx_file,
             code_dir=code_dir, timeout_seconds=member_timeout, registry=registry,
         )
 
-    members = _parallel_map(profile.panel, ask)
+    members = _parallel_map(list(enumerate(profile.panel)), ask)
     ok = [m for m in members if m.ok]
 
     if registry.cancelled:
@@ -256,15 +283,18 @@ def _run_verify(
         "scope, unsupported claims. End with 'VERDICT: PASS' or 'VERDICT: FAIL'."
     )
     progress(f"adversarial review by {len(profile.reviewers)} critic(s)")
+    use_lenses = len(profile.reviewers) >= 2
 
-    def review(agent):
+    def review(item):
+        i, agent = item
+        rt = _with_lens(review_task, i) if use_lenses else review_task
         return _run_member(
-            agent, review_task, role="review", context_file=ctx_file,
+            agent, rt, role="review", context_file=ctx_file,
             code_dir=code_dir, review=True, timeout_seconds=member_timeout,
             registry=registry,
         )
 
-    reviews = _parallel_map(profile.reviewers, review)
+    reviews = _parallel_map(list(enumerate(profile.reviewers)), review)
     ok_reviews = [r for r in reviews if r.ok]
     members = [draft] + reviews
 

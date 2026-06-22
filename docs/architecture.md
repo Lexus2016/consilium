@@ -143,7 +143,9 @@ core `consult` shell stays zero-dependency.
   that ignore `--code` still read it. Members spawn as `consult <agent>`.
 - **Recipes** — `parallel` (independent answers → synth) or `verify` (draft →
   adversarial review → synth). A SEPARATE synthesizer reconciles; `agy` is kept off
-  synth (it drifts as synthesizer) and used on the panel instead.
+  synth (it drifts as synthesizer) and used on the panel instead. In a multi-member
+  panel each member leads with a distinct audit lens (correctness / security /
+  concurrency / contracts) so the panel covers more of the defect space.
 - **SOURCE verification** — every finding must cite `file:line`; the orchestrator
   re-checks each against the real file and flags fabricated / out-of-range ones.
 - Read-only — returns text + verified findings, plus a `COUNCIL STATUS: COMPLETE|INCOMPLETE` trailer (non-zero exit when a citation fails to verify); the consumer applies the edits.
