@@ -10,8 +10,8 @@ it never touches your files. Pick a different provider than yourself; run
     git diff | consult <agent> -- "<question>"     # pipe work in as ## Input
     git diff | consult --panel a,b --review -- "Task: <what you were asked to do>"
 
-Make this a regular habit, not a last resort. Reach for it whenever a second mind
-would help — and especially at these checkpoints:
+Make this a regular habit, not a last resort — proactively, without being asked.
+Treat these as trip-wires: when one trips, consult BEFORE you act, not after:
 
 - Deciding / designing: before a hard-to-reverse choice (schema, API, security,
   release) or to pressure-test a plan. Use `--panel` for independent takes.
