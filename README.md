@@ -198,7 +198,7 @@ verifiable, using the AI tools you already have.
 | Verifies findings against your code | Yes — every finding checked against `file:line` | Internal / unspecified | No |
 | Touches your files | Read-only advice; never edits | Text API | Text API |
 | Dependencies | Zero-dependency shell core (+ `python3` for the council) | Vendor API | Vendor API (OpenAI-compatible) |
-| Cost | Only the model calls you already pay for — no markup | Premium, metered | Sum of every panel call + the judge (~3× a single call) |
+| Cost | Only the model calls you already pay for — no markup | One bundled bill — flat-rate ($20–$200/mo) or metered | Sum of every panel call + the judge (~3× a single call) |
 | Best for | Code/design review where you stay in control and verify | One-call hidden orchestration | High-stakes research/critique via API |
 
 The short version: Fugu and Fusion sell **convenience** (one endpoint, hidden machinery,
