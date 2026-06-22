@@ -179,7 +179,7 @@ consult council -f a.js -f b.js -q "is this retry logic correct"
 It's **expensive** — a multi-agent run takes minutes and several paid calls — so
 save it for questions that earn it: a subtle bug, migration safety, a security
 boundary. It returns located, verified findings; you apply them (it never edits
-files). The council needs `python3`; the core `consult` stays a zero-dependency
+files). It ends with a single `COUNCIL STATUS: COMPLETE | INCOMPLETE` line — and a matching exit code — so your assistant sees at a glance whether to act on the answer or come back with a follow-up. The council needs `python3`; the core `consult` stays a zero-dependency
 shell tool, so this is opt-in.
 
 ## Good to know

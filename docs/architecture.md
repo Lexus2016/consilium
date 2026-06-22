@@ -146,7 +146,7 @@ core `consult` shell stays zero-dependency.
   synth (it drifts as synthesizer) and used on the panel instead.
 - **SOURCE verification** — every finding must cite `file:line`; the orchestrator
   re-checks each against the real file and flags fabricated / out-of-range ones.
-- Read-only — returns text + verified findings; the consumer applies the edits.
+- Read-only — returns text + verified findings, plus a `COUNCIL STATUS: COMPLETE|INCOMPLETE` trailer (non-zero exit when a citation fails to verify); the consumer applies the edits.
 
 Needs `python3`. Details live in the `council/` package.
 

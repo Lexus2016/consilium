@@ -82,7 +82,7 @@ consult council -f a.js -f b.js -q "is this retry logic correct"
 It is **expensive** (a multi-agent run takes minutes and several paid calls), so
 reserve it for questions that earn it: a subtle bug, migration safety, a security
 boundary. Read the `SOURCE VERIFICATION` block — apply only `[OK]` findings;
-`[BAD]` is a hallucinated citation. The council never edits files; you apply the
+`[BAD]` is a hallucinated citation. The final `COUNCIL STATUS:` line is the one-token verdict: `INCOMPLETE` (and a non-zero shell exit) means a citation did not verify or no member survived — re-consult to resolve before relying on the answer. The council never edits files; you apply the
 fixes. Needs `python3` (the core `consult` stays a zero-dependency shell tool).
 
 ## Safety

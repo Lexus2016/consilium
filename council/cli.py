@@ -50,6 +50,9 @@ def cmd_audit(args) -> int:
                     config_path=args.config)
     print(res.final_text)
 
+    bad_sources = sum(1 for s in res.sources if not s.ok)
+    total_sources = len(res.sources)
+
     print("\n" + "=" * 60)
     print("SOURCE VERIFICATION")
     print("=" * 60)
@@ -60,10 +63,9 @@ def cmd_audit(args) -> int:
             mark = "OK " if s.ok else "BAD"
             extra = "" if s.ok else f"  <- {s.reason}"
             print(f"  [{mark}] {s.path}:{s.line}{extra}")
-        bad = sum(1 for s in res.sources if not s.ok)
-        good = len(res.sources) - bad
-        tail = f", {bad} UNVERIFIED" if bad else ""
-        print(f"\n  {good}/{len(res.sources)} sources verified{tail}")
+        good = total_sources - bad_sources
+        tail = f", {bad_sources} UNVERIFIED" if bad_sources else ""
+        print(f"\n  {good}/{total_sources} sources verified{tail}")
 
     print("\n[members]")
     ok_members = 0
@@ -73,7 +75,25 @@ def cmd_audit(args) -> int:
             ok_members += 1
     if res.note:
         print(f"[note] {res.note}")
-    return 0 if ok_members else 1
+
+    # COUNCIL STATUS: one stable line the calling agent can branch on without
+    # re-parsing the blocks above. consilium is verification-first, so an answer
+    # with unverified citations (or no surviving member) is INCOMPLETE, not a
+    # silent exit-0 success. Reports STATE only -- the caller, which holds the
+    # task context consilium lacks, decides whether to re-consult.
+    complete = bool(ok_members) and bad_sources == 0
+    if complete:
+        status = "COMPLETE"
+    else:
+        reasons = []
+        if not ok_members:
+            reasons.append("no member produced an answer")
+        if bad_sources:
+            reasons.append(f"{bad_sources}/{total_sources} sources unverified")
+        status = "INCOMPLETE -- " + "; ".join(reasons)
+    print(f"\nCOUNCIL STATUS: {status}")
+
+    return 0 if complete else 1
 
 
 def main(argv=None) -> int:
