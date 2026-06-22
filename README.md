@@ -194,7 +194,7 @@ verifiable, using the AI tools you already have.
 | Where it runs | Your machine, your own signed-in AI CLIs | Vendor cloud, one endpoint | Vendor cloud, one endpoint |
 | Models per question | You choose: one, or an independent panel | A pool the model picks (hidden) | 3–5 models in parallel |
 | Who synthesizes | **You / your agent** (the hub), with full task context | The trained model, internally | A judge model returns structured analysis; your model writes the final answer |
-| Transparency | You see **every** advisor's raw answer | Hidden machinery; one answer out | Panel answers + a structured judge report |
+| Transparency | Open — you can read each advisor's own answer | Hidden machinery; one answer out | Panel answers + a structured judge report |
 | Verifies findings against your code | Yes — every finding checked against `file:line` | Internal / unspecified | No |
 | Touches your files | Read-only advice; never edits | Text API | Text API |
 | Dependencies | Zero-dependency shell core (+ `python3` for the council) | Vendor API | Vendor API (OpenAI-compatible) |
