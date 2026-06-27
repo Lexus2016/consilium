@@ -22,7 +22,12 @@ AGENT_PROVIDERS: dict[str, str] = {
     "codex": "openai",
     "agy": "google",
     "hermes": "openrouter/moonshot",
-    "opencode": "zhipu/glm",
+    # `opencode` is model-agnostic: the actual model is configured by the
+    # user, so we cannot reliably assign a real provider. Using its own name
+    # means the cross-provider diversity check treats two `opencode` instances
+    # as the same provider; users who want real independence should pick a
+    # non-opencode advisor (or override this mapping in their config).
+    "opencode": "opencode",
 }
 
 # Agents whose `consult` dispatch actually passes the working directory through
@@ -107,6 +112,13 @@ class Config:
     max_concurrent_panels: int = 2
     member_timeout_seconds: int = 900
     heartbeat_seconds: int = 10
+    # Total lines of code embedded into a council question. Over this, extra
+    # files are dropped with a visible [TRUNCATED] marker.
+    max_embedded_lines: int = 6000
+    # Per-member answer cap fed into the synthesizer. Over this, the answer is
+    # truncated with a visible marker so one verbose member can't blow the
+    # synthesizer's input budget.
+    max_synth_chars: int = 6000
     # Regexes (matched at the START of an answer) used to strip environment-
     # specific boilerplate that advisor agents prepend — e.g. activation tokens
     # or SSoT lines injected by a user's global agent instructions. Empty by
@@ -121,29 +133,24 @@ class Config:
 
 DEFAULT_PROFILES: dict[str, dict[str, Any]] = {
     # Default for serious work: draft -> adversarial review -> synthesize.
-    # Code is not averageable; a critic told to "find where this fails" catches
-    # bugs that a naive merge of independent answers does not.
+    # The concrete roster is resolved at runtime from the agents `consult --list`
+    # reports as available, with cross-provider diversity.
     "consilium-verify": {
         "recipe": "verify",
-        "panel": ["agy", "opencode", "hermes"],
-        "drafter": "agy",
-        "reviewers": ["opencode", "hermes"],
-        "synthesizer": "agy",
         "code_access": True,
+        "panel_size": 3,
     },
     # Cheap/fast: independent answers + synthesis. Good for "give me options".
     "consilium-budget": {
         "recipe": "parallel",
-        "panel": ["opencode", "hermes"],
-        "synthesizer": "agy",
         "code_access": False,
+        "panel_size": 2,
     },
     # Strongest panel, independent + synthesis, with code access.
     "consilium-frontier": {
         "recipe": "parallel",
-        "panel": ["agy", "codex", "opencode"],
-        "synthesizer": "agy",
         "code_access": True,
+        "panel_size": 3,
     },
 }
 
@@ -184,6 +191,8 @@ def load_config(path: str | None) -> Config:
         max_concurrent_panels=int(raw.get("max_concurrent_panels", 2)),
         member_timeout_seconds=int(raw.get("member_timeout_seconds", 900)),
         heartbeat_seconds=int(raw.get("heartbeat_seconds", 10)),
+        max_embedded_lines=int(raw.get("max_embedded_lines", 6000)),
+        max_synth_chars=int(raw.get("max_synth_chars", 6000)),
         strip_patterns=list(raw.get("strip_patterns", [])),
         profiles=profiles,
     )

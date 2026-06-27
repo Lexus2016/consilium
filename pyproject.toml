@@ -1,0 +1,17 @@
+[project]
+name = "consilium-council"
+version = "0.5.1"
+description = "Multi-agent code-audit council for the consilium cross-AI consultation bus"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.5.0",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E402"]

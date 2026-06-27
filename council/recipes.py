@@ -46,6 +46,13 @@ class CouncilResult:
         return len(self.final_text)
 
 
+# Default per-member cap on the answer text fed into the synthesizer. A single
+# verbose member must not blow the synth agent's input budget; the tail is kept
+# with a visible truncation marker. The actual cap is configurable via
+# `max_synth_chars` in config/council.json.
+DEFAULT_MAX_SYNTH_CHARS = 6000
+
+
 # --------------------------------------------------------------------------- #
 # OpenAI message flattening
 # --------------------------------------------------------------------------- #
@@ -145,6 +152,7 @@ def run_recipe(
     member_timeout: int,
     registry: ProcessRegistry,
     progress: Progress = lambda _s: None,
+    max_synth_chars: int = DEFAULT_MAX_SYNTH_CHARS,
 ) -> CouncilResult:
     code_dir = working_dir if code_access else None
     ctx_file = _write_temp(context) if context else None
@@ -152,11 +160,11 @@ def run_recipe(
         if profile.recipe == "verify":
             return _run_verify(
                 profile, question, ctx_file, code_dir, working_dir,
-                member_timeout, registry, progress,
+                member_timeout, registry, progress, max_synth_chars,
             )
         return _run_parallel(
             profile, question, ctx_file, code_dir, working_dir,
-            member_timeout, registry, progress,
+            member_timeout, registry, progress, max_synth_chars,
         )
     finally:
         if ctx_file and os.path.exists(ctx_file):
@@ -169,13 +177,6 @@ def _parallel_map(agents, fn):
         return []
     with ThreadPoolExecutor(max_workers=len(agents)) as ex:
         return list(ex.map(fn, agents))
-
-
-# Per-member cap on the answer text fed into the synthesizer. A single verbose
-# member must not blow the synth agent's input limit (it silently truncates and
-# drops findings). Head-keep preserves the findings + their SOURCE: lines.
-MAX_SYNTH_ANSWER_CHARS = 6000
-
 # Cap on how long the synthesizer alone may run. It already waited on the whole
 # panel; if it then stalls on a big input, fail fast to the fallback (strongest
 # single answer) instead of burning the full member_timeout.
@@ -229,7 +230,7 @@ def _with_lens(prompt: str, index: int) -> str:
 
 def _run_parallel(
     profile, question, ctx_file, code_dir, working_dir,
-    member_timeout, registry, progress,
+    member_timeout, registry, progress, max_synth_chars=DEFAULT_MAX_SYNTH_CHARS,
 ) -> CouncilResult:
     progress(f"panel of {len(profile.panel)} answering independently")
     use_lenses = len(profile.panel) >= 2
@@ -251,14 +252,14 @@ def _run_parallel(
         return _all_failed_result(profile.name, members)
 
     progress(f"synthesizing from {len(ok)} answer(s) via {profile.synthesizer}")
-    synth = _synthesize(profile, question, ok, code_dir, member_timeout, registry)
+    synth = _synthesize(profile, question, ok, code_dir, member_timeout, registry, max_synth_chars=max_synth_chars)
     members.append(synth)
     return _finalize(profile, synth, ok, members, working_dir)
 
 
 def _run_verify(
     profile, question, ctx_file, code_dir, working_dir,
-    member_timeout, registry, progress,
+    member_timeout, registry, progress, max_synth_chars=DEFAULT_MAX_SYNTH_CHARS,
 ) -> CouncilResult:
     progress(f"draft by {profile.drafter}")
     draft = _run_member(
@@ -274,6 +275,7 @@ def _run_verify(
         return _run_parallel(
             profile, question, ctx_file, code_dir, working_dir,
             member_timeout, registry, progress,
+            max_synth_chars=max_synth_chars,
         )
 
     review_task = (
@@ -304,7 +306,7 @@ def _run_verify(
     progress(f"synthesizing final via {profile.synthesizer}")
     synth = _synthesize(
         profile, question, [draft] + ok_reviews, code_dir, member_timeout,
-        registry, verify=True,
+        registry, verify=True, max_synth_chars=max_synth_chars,
     )
     members.append(synth)
     return _finalize(profile, synth, [draft] + ok_reviews, members, working_dir)
@@ -312,17 +314,18 @@ def _run_verify(
 
 def _synthesize(
     profile, question, inputs, code_dir, member_timeout, registry, verify=False,
+    max_synth_chars: int = DEFAULT_MAX_SYNTH_CHARS,
 ) -> MemberResult:
     blocks = []
     for m in inputs:
         label = {"draft": "DRAFT", "review": "REVIEW", "panel": "ANSWER"}.get(m.role, m.role.upper())
         answer = m.answer
-        if len(answer) > MAX_SYNTH_ANSWER_CHARS:
-            dropped = len(answer) - MAX_SYNTH_ANSWER_CHARS
+        if len(answer) > max_synth_chars:
+            dropped = len(answer) - max_synth_chars
             answer = (
-                answer[:MAX_SYNTH_ANSWER_CHARS]
+                answer[:max_synth_chars]
                 + f"\n[...truncated {dropped} chars — answer exceeded the "
-                f"{MAX_SYNTH_ANSWER_CHARS}-char per-member synth budget...]"
+                f"{max_synth_chars}-char per-member synth budget...]"
             )
         blocks.append(f"### {label} from {m.agent}\n{answer}")
     body = (
@@ -339,7 +342,8 @@ def _synthesize(
         return run_agent(
             profile.synthesizer,
             "Produce the single final answer per the instructions in the context.",
-            role="synth", context_file=synth_ctx, code_dir=None,  # text-only reconcile; giving --code makes the agent hang on its own read loop
+            role="synth", context_file=synth_ctx, code_dir=None,
+            # text-only reconcile; giving --code makes the agent hang on its own read loop
             timeout_seconds=min(member_timeout, SYNTH_TIMEOUT_CAP), registry=registry,
         )
     finally:

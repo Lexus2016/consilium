@@ -12,7 +12,8 @@ reminds the agent to get an independent second opinion (`consult`) at two moment
   silent, so it fires on real code, not every commit.
 
 It **never blocks** a command and stays silent unless a branch matches. It does not
-duplicate destructive ops you already hard-deny in `settings.json`. Requires `jq`.
+duplicate destructive ops you already hard-deny in `settings.json`. Requires `jq`
+(preferred) or `python3` (fallback).
 
 ## Enable it (two manual steps — by design)
 

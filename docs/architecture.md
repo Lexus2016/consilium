@@ -14,12 +14,12 @@ start consulting the others.
 
 ## The agents (verified locally)
 
-| Agent | Version | Headless call | Continue session | Plugins |
-|---|---|---|---|---|
-| `claude` (Claude Code) | — | `claude -p "Q"` | `claude -c -p` | skills |
-| `agy` (Antigravity) | 1.0.2 | `agy -p "Q"` | `agy -c -p` / `--conversation ID` | `agy plugin` |
-| `opencode` | 1.15.10 | `opencode run "Q"` | `opencode run -c` / `-s ID` | `opencode plugin`, MCP, ACP |
-| `codex` (OpenAI) | 0.134.0 | `codex exec "Q"` | `codex resume --last` | `codex plugin`, can be MCP server |
+| Agent | Headless call | Continue session | Plugins |
+|---|---|---|---|
+| `claude` (Claude Code) | `claude -p "Q"` | `claude -c -p` | skills |
+| `agy` (Antigravity) | `agy -p "Q"` | `agy -c -p` / `--conversation ID` | `agy plugin` |
+| `opencode` | `opencode run "Q"` | `opencode run -c` / `-s ID` | `opencode plugin`, MCP, ACP |
+| `codex` (OpenAI) | `codex exec "Q"` | `codex resume --last` | `codex plugin`, can be MCP server |
 
 Shared extras: `--add-dir` / `-C` (give a working dir as context), `-m`/`--model`,
 sandbox / approval controls (codex: `--sandbox read-only -a never`).

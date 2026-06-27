@@ -5,6 +5,9 @@
 .idea/
 .vscode/
 node_modules/
+.serena/
+.ruff_cache/
+.pytest_cache/
 
 # Python (council)
 __pycache__/

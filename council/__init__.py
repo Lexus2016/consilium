@@ -11,4 +11,4 @@ drop-in for every step of an agent loop. The consumer applies the findings; the
 council never edits files.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.5.1"

@@ -23,9 +23,10 @@ from .spawn import ProcessRegistry, run_agent
 from .recipes import run_recipe
 from .roster import list_available_agents, resolve_roster
 
-# Total budget of embedded code lines across all files. Over this, extra files
-# are dropped with a VISIBLE marker (never a silent cap).
-MAX_LINES = 6000
+# Default budget of embedded code lines across all files. Over this, extra files
+# are dropped with a VISIBLE marker. The actual cap is configurable via
+# `max_embedded_lines` in config/council.json.
+DEFAULT_MAX_EMBEDDED_LINES = 6000
 
 
 @dataclass
@@ -64,8 +65,8 @@ def _number_file(abs_path: str) -> tuple[str, int]:
     return f"// FILE: {abs_path}\n{body}", len(lines)
 
 
-def gather_code(files: list[str]) -> str:
-    """Read, number and concatenate ``files`` within ``MAX_LINES``.
+def gather_code(files: list[str], max_lines: int = DEFAULT_MAX_EMBEDDED_LINES) -> str:
+    """Read, number and concatenate ``files`` within ``max_lines``.
 
     The first file is always included even if it alone exceeds the budget;
     subsequent over-budget files are dropped with a visible ``[TRUNCATED ...]``
@@ -77,7 +78,7 @@ def gather_code(files: list[str]) -> str:
     for path in files:
         ap = os.path.abspath(path)
         block, n = _number_file(ap)
-        if blocks and used + n > MAX_LINES:
+        if blocks and used + n > max_lines:
             omitted.append((ap, n))
             continue
         blocks.append(block)
@@ -85,7 +86,7 @@ def gather_code(files: list[str]) -> str:
     text = "\n\n".join(blocks)
     if omitted:
         marker = "\n".join(
-            f"[TRUNCATED: omitted {p} ({n} lines) — over the {MAX_LINES}-line "
+            f"[TRUNCATED: omitted {p} ({n} lines) — over the {max_lines}-line "
             f"budget; audit it in a separate run]"
             for p, n in omitted
         )
@@ -169,7 +170,7 @@ def run_audit(
     profile = cfg.profiles[profile_name]
     abs_files = {os.path.abspath(f) for f in files}
 
-    code_block = gather_code(files)
+    code_block = gather_code(files, max_lines=cfg.max_embedded_lines)
     question = build_question(code_block, user_question)
     member_timeout = profile.member_timeout_seconds or cfg.member_timeout_seconds
 
@@ -185,6 +186,7 @@ def run_audit(
                 concrete, question, "",
                 working_dir=cfg.working_dir_abs, code_access=False,
                 member_timeout=member_timeout, registry=registry,
+                max_synth_chars=cfg.max_synth_chars,
                 progress=lambda msg: print(f"[council] {msg}", file=sys.stderr),
             )
             raw_text, members, run_note = result.final_text, result.members, result.note

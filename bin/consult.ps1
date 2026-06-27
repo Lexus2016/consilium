@@ -14,7 +14,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Version  = '0.5.0'
+$Version  = '0.5.1'
 $Prog     = 'consult'
 $Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex')
 $Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files.'
@@ -26,7 +26,9 @@ $ReviewPreamble = 'You are a peer AI advisor doing an ADVERSARIAL review for ano
 function Get-HomeDir {
     if ($env:HOME)        { return $env:HOME }
     if ($env:USERPROFILE) { return $env:USERPROFILE }
-    return (Get-Location).Path
+    $loc = Get-Location
+    if ($loc.Provider.Name -eq 'FileSystem') { return $loc.ProviderPath }
+    return [System.IO.Directory]::GetCurrentDirectory()
 }
 $LogDir = if ($env:CONSILIUM_LOG_DIR) { $env:CONSILIUM_LOG_DIR } else { Join-Path (Get-HomeDir) '.consilium/log' }
 
@@ -126,6 +128,12 @@ if ($argv[0] -eq 'council') {
           elseif (Get-Command python -ErrorAction SilentlyContinue) { 'python' }
           else { $null }
     if (-not $py) { Write-Err 'council mode needs python3 (or python) on PATH'; exit 127 }
+    $subcmd = 'audit'
+    $offset = 1
+    if ($n -gt 1 -and ($argv[1] -eq 'check' -or $argv[1] -eq 'audit')) {
+        $subcmd = $argv[1]
+        $offset = 2
+    }
     $scriptPath = $PSCommandPath
     try {
         $li = Get-Item $scriptPath -ErrorAction Stop
@@ -134,8 +142,8 @@ if ($argv[0] -eq 'council') {
     $root = Split-Path (Split-Path $scriptPath -Parent) -Parent
     $env:PYTHONPATH = if ($env:PYTHONPATH) { "$root$([IO.Path]::PathSeparator)$($env:PYTHONPATH)" } else { $root }
     if (-not $env:COUNCIL_CONFIG) { $env:COUNCIL_CONFIG = Join-Path $root 'config/council.json' }
-    $rest = if ($n -gt 1) { $argv[1..($n - 1)] } else { @() }
-    & $py -m council audit @rest
+    $rest = if ($n -gt $offset) { $argv[$offset..($n - 1)] } else { @() }
+    & $py -m council $subcmd @rest
     exit $LASTEXITCODE
 }
 
@@ -338,6 +346,24 @@ switch ($agent) {
         # request itself, so every flag must precede -p and the prompt must be the
         # final token. Verified: `agy --add-dir DIR -p "..."` answers correctly,
         # while `agy -p --add-dir DIR "..."` makes agy investigate "--add-dir".
+        # Isolate agy from this machine's ~/.gemini/GEMINI.md (global agent
+        # instructions) so it answers as a clean advisor. Auth lives in the OS
+        # keyring, so symlinking the accounts/config keeps login working.
+        $agyClean = if ($env:CONSILIUM_AGY_DIR) { $env:CONSILIUM_AGY_DIR } else { Join-Path (Get-HomeDir) '.consilium' 'agy-clean' }
+        $agyAccounts = Join-Path $agyClean 'google_accounts.json'
+        $agyConfig = Join-Path $agyClean 'config'
+        if (-not (Test-Path -LiteralPath $agyAccounts)) {
+            New-Item -ItemType Directory -Force -Path $agyClean | Out-Null
+            $srcAccounts = Join-Path (Get-HomeDir) '.gemini' 'google_accounts.json'
+            $srcConfig = Join-Path (Get-HomeDir) '.gemini' 'config'
+            if (Test-Path -LiteralPath $srcAccounts) {
+                try { New-Item -ItemType SymbolicLink -Path $agyAccounts -Target $srcAccounts -Force | Out-Null } catch {}
+            }
+            if (Test-Path -LiteralPath $srcConfig) {
+                try { New-Item -ItemType SymbolicLink -Path $agyConfig -Target $srcConfig -Force | Out-Null } catch {}
+            }
+        }
+        $cmdArgs += @('--gemini_dir', $agyClean)
         if ($doContinue) { $cmdArgs += '-c' }
         if ($model)   { $cmdArgs += @('--model', $model) }
         if ($codeDir) { $cmdArgs += @('--add-dir', $codeDir) }

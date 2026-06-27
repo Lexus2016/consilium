@@ -32,7 +32,7 @@ def _scratch_cwd() -> str:
 
 
 def fake_mode() -> bool:
-    return os.environ.get("COUNCIL_FAKE", "") not in ("", "0", "false", "False")
+    return os.environ.get("COUNCIL_FAKE", "").lower() not in ("", "0", "false")
 
 
 @dataclass
@@ -153,7 +153,7 @@ def run_agent(
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
             env=env,
             cwd=code_dir or _scratch_cwd(),
@@ -174,14 +174,15 @@ def run_agent(
     try:
         # +30s grace over the consult-internal timeout so the agent's own
         # timeout fires first and we don't double-kill prematurely.
-        out, _ = proc.communicate(timeout=timeout_seconds + 30)
+        out, stderr_text = proc.communicate(timeout=timeout_seconds + 30)
         wall = time.monotonic() - start
         if registry is not None and registry.cancelled:
             return MemberResult(agent, role, False, "", wall, error="cancelled")
+        stderr_part = (stderr_text or "").strip()
         if proc.returncode != 0:
             return MemberResult(
                 agent, role, False, (out or "").strip(), wall,
-                error=f"exit code {proc.returncode}",
+                error=f"exit code {proc.returncode}{((': ' + stderr_part) if stderr_part else '')}",
             )
         answer = (out or "").strip()
         if not answer:
@@ -191,13 +192,15 @@ def run_agent(
         # Kill, then drain the pipes so the child is reaped and no zombie /
         # open-fd is left behind (terminate() alone does not reap).
         proc.kill()
+        stderr_part = ""
         try:
-            proc.communicate(timeout=5)
+            _, stderr_text = proc.communicate(timeout=5)
+            stderr_part = (stderr_text or "").strip()
         except Exception:  # noqa: BLE001
             pass
         return MemberResult(
             agent, role, False, "", time.monotonic() - start,
-            error=f"timed out after {timeout_seconds}s",
+            error=f"timed out after {timeout_seconds}s{((': ' + stderr_part) if stderr_part else '')}",
         )
     finally:
         if registry is not None:

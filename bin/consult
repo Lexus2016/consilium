@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-VERSION="0.5.0"
+VERSION="0.5.1"
 PROG="consult"
 
 AGENTS="claude agy hermes opencode codex"
@@ -133,6 +133,10 @@ fi
 # No recursion: council members are spawned as `consult agy|opencode|hermes`.
 if [ "${1:-}" = "council" ]; then
   shift
+  subcmd="audit"
+  case "${1:-}" in
+    check|audit) subcmd="$1"; shift ;;
+  esac
   _t="$0"; [ -L "$_t" ] && _t="$(readlink "$_t")"
   _root="$(cd "$(dirname "$_t")/.." && pwd)"
   if ! command -v python3 >/dev/null 2>&1; then
@@ -140,7 +144,7 @@ if [ "${1:-}" = "council" ]; then
   fi
   exec env PYTHONPATH="$_root${PYTHONPATH:+:$PYTHONPATH}" \
            COUNCIL_CONFIG="${COUNCIL_CONFIG:-$_root/config/council.json}" \
-           python3 -m council audit "$@"
+           python3 -m council "$subcmd" "$@"
 fi
 
 while [ "$#" -gt 0 ]; do

@@ -5,6 +5,12 @@
   "max_concurrent_panels": 2,
   "member_timeout_seconds": 900,
 
+  "_max_embedded_lines_doc": "Total lines of code embedded into the council question. Extra files beyond this budget are omitted with a visible [TRUNCATED] marker.",
+  "max_embedded_lines": 6000,
+
+  "_max_synth_chars_doc": "Per-member answer cap fed into the synthesizer. Answers beyond this are truncated with a visible marker.",
+  "max_synth_chars": 6000,
+
   "_strip_patterns_doc": "Regexes matched at the START of an answer to strip boilerplate that advisor agents prepend because of this machine's global agent instructions (activation token + SSoT line). Set to [] on a clean environment.",
   "strip_patterns": [
     "\\[STATE\\][^\\n]*",

@@ -12,7 +12,14 @@
 #              stay silent, so the nudge fires on real code, not every commit.
 set -euo pipefail
 
-cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null || true)
+cmd=""
+if command -v jq >/dev/null 2>&1; then
+  cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null || true)
+elif command -v python3 >/dev/null 2>&1; then
+  cmd=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("command",""))' 2>/dev/null || true)
+fi
+# If neither jq nor python3 is available we cannot parse the hook input;
+# stay silent and non-blocking rather than emitting a malformed context.
 
 # Branch 1: hard-to-reverse action.
 if printf '%s' "$cmd" | grep -qiE 'git (push|merge|rebase)|alembic (upgrade|downgrade)|flyway (migrate|clean)|prisma migrate|db:migrate|artisan migrate|terraform apply|kubectl apply'; then

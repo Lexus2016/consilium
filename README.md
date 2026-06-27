@@ -222,6 +222,10 @@ visible, findings checked against the real code).
 - Every call is a real request to another model, so save it for the things that
   matter, not trivia.
 - Don't put passwords or keys in the question.
+- Anything passed through `--context` or a pipe is inlined into the prompt, and the
+  prompt is passed to the advisor as a command-line argument. On a multi-user host
+  this text can show up in `ps` / `/proc` listings. Strip secrets from context files
+  and diffs, not just from the question itself.
 
 ## Read more
 

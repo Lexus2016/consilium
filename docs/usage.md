@@ -127,6 +127,11 @@ Three ways to feed it context:
 - **`--code DIR`** gives the other AI read-only access to a folder so it can look
   around the repo itself. That folder isn't pasted into the prompt.
 
+**Security note:** anything passed through `--context` or a pipe is inlined into the
+prompt, and the prompt is passed to the advisor as a command-line argument. On a
+multi-user host this text can be visible in `ps` / `/proc` listings. Strip secrets
+from context files and diffs before passing them, not just from the question itself.
+
 The answer is only as good as the slice you hand it. Give it a mess and you'll get a
 vague reply back.
 

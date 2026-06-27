@@ -144,8 +144,9 @@ can revisit the reasoning later.
 - A consult is a real model call. Bound it: set `CONSILIUM_TIMEOUT` (seconds) so a
   hung advisor can't stall you.
 - One well-formed question is worth more than five vague ones.
-- Strip secrets from any context file before you pass it. The advisor is another
-  process, possibly another provider.
+- Strip secrets from any context file or piped diff before you pass it. The advisor
+  is another process, possibly another provider, and the prompt is passed as a
+  command-line argument (visible in process listings on multi-user hosts).
 
 ## Hub instruction block
 

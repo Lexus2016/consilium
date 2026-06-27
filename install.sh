@@ -135,7 +135,19 @@ if [ "$do_clients" -eq 1 ]; then
   echo "syncing consult-peer hub block into installed agents:"
   sync_block "$HOME/.codex/AGENTS.md"
   sync_block "$HOME/.config/opencode/AGENTS.md"
-  sync_block "$HOME/.gemini/GEMINI.md"
+
+  # agy (Antigravity / Gemini) reads ~/.gemini/GEMINI.md. Nothing else creates
+  # that file, so seed it when agy is installed, then keep it in sync on later
+  # runs. Harmless to other tools — the block is generic hub guidance.
+  gemini_md="$HOME/.gemini/GEMINI.md"
+  if [ -f "$gemini_md" ]; then
+    sync_block "$gemini_md"
+  elif command -v agy >/dev/null 2>&1; then
+    mkdir -p "$HOME/.gemini"
+    printf '# Global agent instructions\n\n' > "$gemini_md"
+    cat "$block_file" >> "$gemini_md"
+    echo "  created block: $gemini_md (read by agy)"
+  fi
 
   # hermes (Nous) has no dedicated dotfile like ~/.codex/AGENTS.md; it reads a
   # home-level ~/AGENTS.md as global user instructions. Nothing else creates that
