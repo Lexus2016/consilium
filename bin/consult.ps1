@@ -16,7 +16,7 @@ $ErrorActionPreference = 'Stop'
 
 $Version  = '0.5.1'
 $Prog     = 'consult'
-$Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex')
+$Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex', 'grok', 'pi', 'cursor', 'kilo', 'cline', 'goose')
 $Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files.'
 # Used by --review. Deliberately adversarial: a reviewer told to 'assess quality'
 # rubber-stamps; one told to 'find where the RESULT fails the TASK' catches real
@@ -46,14 +46,14 @@ usage:
   <command> | $Prog <agent> [options] -- <question...>
 
 agents:
-  claude | agy | hermes | opencode | codex
+  claude | agy | hermes | opencode | codex | grok | pi | cursor | kilo | cline | goose
 
 options:
   --panel LIST     ask several advisors in parallel (comma-separated), each
                    independently, then print all answers back-to-back
   --context FILE   inline a context file into the prompt
   --code DIR       give the advisor a working directory for code context
-  --model NAME     override the model (claude/agy/hermes/opencode/codex)
+  --model NAME     override the model, for agents that accept one
   --continue       continue the advisor's previous session
   --review         use an adversarial review preamble: judge the RESULT
                    (piped diff / --context / --code) against the TASK in the
@@ -88,9 +88,21 @@ examples:
 function Show-UsageOut { Get-UsageText }
 function Show-UsageErr { [Console]::Error.WriteLine((Get-UsageText)) }
 
+# Map an advisor NAME to the actual binary on PATH. Identity for every agent
+# except `cursor`: the Cursor CLI installs as `cursor-agent` (newer builds also
+# expose a bare `agent` alias), so resolve to whichever exists.
+function Get-AgentBinary {
+    param([string]$Name)
+    if ($Name -eq 'cursor') {
+        if (Get-Command cursor-agent -CommandType Application -ErrorAction SilentlyContinue) { return 'cursor-agent' }
+        return 'agent'
+    }
+    return $Name
+}
+
 function Show-List {
     foreach ($a in $Agents) {
-        $cmd = Get-Command $a -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        $cmd = Get-Command (Get-AgentBinary $a) -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($cmd) { '  {0,-9} installed  ({1})' -f $a, $cmd.Source }
         else      { '  {0,-9} not found'        -f $a }
     }
@@ -197,14 +209,14 @@ if ($panel) {
         $a = $a.Trim()
         if (-not $a) { continue }
         if ($Agents -notcontains $a) { Write-WarnMsg "panel: unknown agent '$a' (expected one of: $($Agents -join ' ')); skipping"; continue }
-        if (-not (Get-Command $a -CommandType Application -ErrorAction SilentlyContinue)) { Write-WarnMsg "panel: agent '$a' is not installed or not on PATH; skipping"; continue }
+        if (-not (Get-Command (Get-AgentBinary $a) -CommandType Application -ErrorAction SilentlyContinue)) { Write-WarnMsg "panel: agent '$a' is not installed or not on PATH; skipping"; continue }
         if ($panelAgents -notcontains $a) { $panelAgents += $a }
     }
     if ($panelAgents.Count -eq 0) { Write-Err "panel: no usable advisors in '$panel'"; exit 2 }
 } else {
     if ([string]::IsNullOrEmpty($agent)) { Write-Err 'no agent given'; Show-UsageErr; exit 2 }
     if ($Agents -notcontains $agent)     { Write-Err "unknown agent: $agent (expected one of: $($Agents -join ' '))"; exit 2 }
-    if (-not (Get-Command $agent -CommandType Application -ErrorAction SilentlyContinue)) { Write-Err "agent '$agent' is not installed or not on PATH"; exit 127 }
+    if (-not (Get-Command (Get-AgentBinary $agent) -CommandType Application -ErrorAction SilentlyContinue)) { Write-Err "agent '$agent' is not installed or not on PATH"; exit 127 }
 }
 
 # ----- recursion guard -------------------------------------------------------
@@ -392,6 +404,65 @@ switch ($agent) {
         if ($codeDir) { $cmdArgs += @('-C', $codeDir) }
         $cmdArgs += $prompt
     }
+    'grok' {
+        # xAI Grok CLI (superagent-ai/grok-cli): `-p`/`--single` takes the prompt as
+        # its value, prints the answer to stdout, and exits (default output plain).
+        # Flags verified against `grok --help`.
+        if ($model)   { $cmdArgs += @('-m', $model) }
+        if ($doContinue) { $cmdArgs += '-c' }
+        if ($codeDir) { $cmdArgs += @('--cwd', $codeDir) }
+        $cmdArgs += @('-p', $prompt)
+    }
+    'pi' {
+        # Pi coding agent (pi.dev): print-and-exit via `pi -p` (boolean; prompt is
+        # the trailing positional). Supports provider/id models.
+        $cmdArgs += '-p'
+        if ($model)   { $cmdArgs += @('--model', $model) }
+        if ($doContinue) { $cmdArgs += '-c' }
+        if ($codeDir) { Write-WarnMsg 'pi: no working-directory flag; --code ignored (cd into the dir before consulting).' }
+        $cmdArgs += $prompt
+    }
+    'cursor' {
+        # Cursor CLI (binary cursor-agent, or a bare `agent` alias): `-p` print mode
+        # DEFAULTS to stream-json, so pin --output-format text for a clean answer.
+        # Continue is --resume (there is no --continue). Verified against
+        # `cursor-agent --help`. Advice-safe: -f/--force is never passed, so a
+        # write/bash tool needs an approval the closed stdin can't give.
+        $cmdArgs += @('-p', '--output-format', 'text')
+        if ($model)   { $cmdArgs += @('--model', $model) }
+        if ($doContinue) { $cmdArgs += '--resume' }
+        if ($codeDir) { Write-WarnMsg 'cursor: no working-directory flag; --code ignored (cd into the dir before consulting).' }
+        $cmdArgs += $prompt
+    }
+    'kilo' {
+        # Kilo Code CLI: `kilo run "<msg>"` is non-interactive by default. We do NOT
+        # pass --auto, so any write still hits a permission gate the closed stdin
+        # cannot approve — the advisor stays advice-only in practice.
+        $cmdArgs += 'run'
+        if ($model)   { $cmdArgs += @('-m', $model) }
+        if ($doContinue) { $cmdArgs += '-c' }
+        if ($codeDir) { $cmdArgs += @('--dir', $codeDir) }
+        $cmdArgs += $prompt
+    }
+    'cline' {
+        # Cline CLI: goes headless because consilium always pipes/redirects the
+        # advisor's stdout. Requires a prior `cline auth`. No documented resume flag;
+        # act mode needs approval to write, which the closed stdin denies.
+        if ($model)   { $cmdArgs += @('-m', $model) }
+        if ($codeDir) { $cmdArgs += @('--cwd', $codeDir) }
+        if ($doContinue) { Write-WarnMsg 'cline: no documented continue/resume flag; ignoring --continue.' }
+        $cmdArgs += $prompt
+    }
+    'goose' {
+        # Goose CLI (Block): `goose run -t "<prompt>"` executes and exits; `-q` keeps
+        # stdout to just the model's answer. Agentic — advice-only rests on the
+        # preamble, like opencode.
+        $cmdArgs += @('run', '-q')
+        if ($model)   { $cmdArgs += @('--model', $model) }
+        if ($doContinue) { $cmdArgs += '-r' }
+        if ($codeDir) { Write-WarnMsg "goose: 'run' has no working-directory flag; --code ignored (cd into the dir before consulting)." }
+        $cmdArgs += @('-t', $prompt)
+    }
 }
 
 # ----- timeout ---------------------------------------------------------------
@@ -464,7 +535,7 @@ function Invoke-Agent {
     }
 }
 
-$res = Invoke-Agent -AgentName $agent -ArgList $cmdArgs -TimeoutSec $timeoutSec
+$res = Invoke-Agent -AgentName (Get-AgentBinary $agent) -ArgList $cmdArgs -TimeoutSec $timeoutSec
 
 if ($res.StdOut) { [Console]::Out.Write($res.StdOut) }
 if ($res.StdErr) { [Console]::Error.Write($res.StdErr) }

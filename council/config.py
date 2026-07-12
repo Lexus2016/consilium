@@ -22,18 +22,27 @@ AGENT_PROVIDERS: dict[str, str] = {
     "codex": "openai",
     "agy": "google",
     "hermes": "openrouter/moonshot",
-    # `opencode` is model-agnostic: the actual model is configured by the
-    # user, so we cannot reliably assign a real provider. Using its own name
-    # means the cross-provider diversity check treats two `opencode` instances
-    # as the same provider; users who want real independence should pick a
-    # non-opencode advisor (or override this mapping in their config).
+    "grok": "xai",
+    # `opencode`, `pi`, `cursor`, `kilo`, `cline`, and `goose` are model-agnostic
+    # front-ends: the real provider is whatever the user configured, so we cannot
+    # assign one reliably. Bucketing each under its own name means the cross-
+    # provider diversity check treats two `opencode` (or two `goose`) instances as
+    # the same provider — fake independence — while still allowing, say, `goose`
+    # and `cline` on one panel. Users who want a guaranteed provider should pick a
+    # named-provider advisor (claude/codex/agy/hermes/grok) or override this map.
     "opencode": "opencode",
+    "pi": "pi",
+    "cursor": "cursor",
+    "kilo": "kilo",
+    "cline": "cline",
+    "goose": "goose",
 }
 
 # Agents whose `consult` dispatch actually passes the working directory through
-# to the model (claude/agy via --add-dir, codex via -C). hermes/opencode ignore
-# --code, so they must NOT be chosen as the synthesizer when code access matters.
-AGENTS_WITH_CODE_ACCESS = {"claude", "agy", "codex"}
+# to the model (claude/agy via --add-dir, codex via -C, grok via --cwd, kilo via
+# --dir, cline via --cwd). hermes/opencode/pi/cursor/goose ignore --code, so they
+# must NOT be chosen as the synthesizer when code access matters.
+AGENTS_WITH_CODE_ACCESS = {"claude", "agy", "codex", "grok", "kilo", "cline"}
 
 VALID_RECIPES = {"parallel", "verify"}
 

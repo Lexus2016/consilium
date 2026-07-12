@@ -61,7 +61,7 @@ consult <agent> [options] "<question>"
 consult --panel <a,b,c> [options] -- <question...>
 <command> | consult <agent> [options] -- <question...>
 
-agents:  claude | agy | hermes | opencode | codex
+agents:  claude | agy | hermes | opencode | codex | grok | pi | cursor | kilo | cline | goose
 options:
   --panel LIST     fan the question out to several advisors in parallel; print
                    all answers back-to-back (independent, never a debate)
@@ -106,6 +106,12 @@ duplicates collapsed.
 | hermes | `hermes chat [--model M] [-c] -q "<prompt>"` (no `--add-dir`) |
 | opencode | `opencode run [-c] [-m M] "<prompt>"` |
 | codex | `codex exec --sandbox read-only [-m M] [-C DIR] "<prompt>"` |
+| grok | `grok [-m M] [-c] [--cwd DIR] -p "<prompt>"` (`-p`/`--single` takes the prompt) |
+| pi | `pi -p [--model M] [-c] "<prompt>"` (no `--code`) |
+| cursor | `cursor-agent -p --output-format text [--model M] [--resume] "<prompt>"` (binary may be `agent`; no `--code`) |
+| kilo | `kilo run [-m M] [-c] [--dir DIR] "<prompt>"` (no `--auto`) |
+| cline | `cline [-m M] [--cwd DIR] "<prompt>"` (headless via redirected stdout; needs `cline auth`) |
+| goose | `goose run -q [--model M] [-r] -t "<prompt>"` (no `--code`) |
 
 **Prompt assembly (unless `--raw`):** advisor preamble + optional `## Context`
 (file contents) + optional `## Input` (piped stdin) + `## Question`. The default
@@ -163,8 +169,14 @@ differs per agent, so be honest about it:
 | claude | does not edit in `-p` answer mode without granted permission |
 | agy | does not edit in `-p` answer mode without granted permission (its `--sandbox` flag stalls headless calls, so we don't pass it) |
 | opencode | no read-only flag exists; relies on its default behaviour + the preamble |
+| grok | no read-only flag; relies on its default behaviour + the preamble |
+| pi | no read-only flag; relies on the preamble |
+| cursor | `-p` has write/bash tools, but `-f`/`--force` is never passed, so a write needs an approval the closed stdin denies |
+| kilo | `--auto` is never passed, so a write needs an approval the closed stdin can't give |
+| cline | act mode needs an approval to write, which the closed stdin denies |
+| goose | no read-only flag; relies on the preamble |
 
-Guaranteed for all four: consilium never passes
+Guaranteed for every advisor: consilium never passes
 `--dangerously-skip-permissions` (or any equivalent), and the advisor preamble
 tells the advisor to advise only — do not create, modify, or delete files. All
 real edits stay with the hub.

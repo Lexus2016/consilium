@@ -57,6 +57,12 @@ consult codex -- "Чи безпечно запустити цю міграцію
 | `agy`       | Gemini                          | Google         |
 | `opencode`  | OpenCode (модель на твій вибір) | відкритий код  |
 | `hermes`    | Hermes                          | Nous Research  |
+| `grok`      | Grok                            | xAI            |
+| `pi`        | Pi (модель на твій вибір)       | pi.dev         |
+| `cursor`    | Cursor (модель на твій вибір)   | Cursor         |
+| `kilo`      | Kilo Code (модель на твій вибір)| Kilo           |
+| `cline`     | Cline (модель на твій вибір)    | Cline          |
+| `goose`     | Goose (модель на твій вибір)    | Block          |
 
 Обирай рядок, який *не* є тим ШІ, з яким ти вже працюєш. Другий Claude переважно
 погоджується з першим.

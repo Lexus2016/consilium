@@ -53,6 +53,12 @@ model family as you**. A second instance of yourself mostly agrees with itself.
 | `opencode` | model-agnostic (your configured model) | a third independent voice |
 | `agy` | Google (Gemini) | another provider's perspective |
 | `hermes` | Nous Research (Hermes) | a self-improving agent's independent take |
+| `grok` | xAI (Grok) | another frontier provider's take; can read `--code` |
+| `pi` | model-agnostic (provider/model you set) | a configurable extra voice |
+| `cursor` | Cursor (your configured model) | an editor-based agent's independent take (edits stay approval-gated) |
+| `kilo` | model-agnostic (provider/model you set) | another configurable voice, can read `--code` |
+| `cline` | model-agnostic (needs `cline auth`) | a configurable voice, can read `--code` |
+| `goose` | model-agnostic (provider/model you set) | Block's agent as an independent voice |
 
 If you're Claude, prefer `codex` or `agy`. If you're Codex, prefer `claude`.
 

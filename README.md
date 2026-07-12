@@ -58,6 +58,12 @@ right.
 | `agy`      | Gemini                         | Google        |
 | `opencode` | OpenCode (the model you set)   | open source   |
 | `hermes`   | Hermes                         | Nous Research |
+| `grok`     | Grok                           | xAI           |
+| `pi`       | Pi (the model you set)         | pi.dev        |
+| `cursor`   | Cursor (the model you set)     | Cursor        |
+| `kilo`     | Kilo Code (the model you set)  | Kilo          |
+| `cline`    | Cline (the model you set)      | Cline         |
+| `goose`    | Goose (the model you set)      | Block         |
 
 Pick a row that *isn't* the AI you're already using. A second Claude mostly agrees
 with the first.

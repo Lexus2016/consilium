@@ -58,6 +58,12 @@ consult codex -- "Безопасно ли запустить эту миграц
 | `agy`        | Gemini                          | Google         |
 | `opencode`   | OpenCode (модель на твой выбор) | открытый код   |
 | `hermes`     | Hermes                          | Nous Research  |
+| `grok`       | Grok                            | xAI            |
+| `pi`         | Pi (модель на твой выбор)       | pi.dev         |
+| `cursor`     | Cursor (модель на твой выбор)   | Cursor         |
+| `kilo`       | Kilo Code (модель на твой выбор)| Kilo           |
+| `cline`      | Cline (модель на твой выбор)    | Cline          |
+| `goose`      | Goose (модель на твой выбор)    | Block          |
 
 Выбирай строку, которая *не* тот ИИ, с которым ты уже работаешь. Второй Claude в
 основном соглашается с первым.

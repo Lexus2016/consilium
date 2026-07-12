@@ -14,7 +14,7 @@ set -euo pipefail
 VERSION="0.5.1"
 PROG="consult"
 
-AGENTS="claude agy hermes opencode codex"
+AGENTS="claude agy hermes opencode codex grok pi cursor kilo cline goose"
 PREAMBLE="You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files."
 # Used by --review. Deliberately adversarial: a reviewer told to 'assess quality'
 # rubber-stamps; a reviewer told to 'find where the RESULT fails the TASK' catches
@@ -38,7 +38,7 @@ usage:
   <command> | $PROG <agent> [options] -- <question...>
 
 agents:
-  claude | agy | hermes | opencode | codex
+  claude | agy | hermes | opencode | codex | grok | pi | cursor | kilo | cline | goose
 
 council (needs python3):
   $PROG council audits CODE with a multi-agent panel (different providers),
@@ -50,7 +50,7 @@ options:
                    independently, then print all answers back-to-back
   --context FILE   inline a context file into the prompt
   --code DIR       give the advisor a working directory for code context
-  --model NAME     override the model (claude/agy/hermes/opencode/codex)
+  --model NAME     override the model, for agents that accept one
   --continue       continue the advisor's previous session
   --review         use an adversarial review preamble: judge the RESULT
                    (piped diff / --context / --code) against the TASK in the
@@ -89,10 +89,23 @@ is_known_agent() {
   esac
 }
 
+# Map an advisor NAME to the actual binary on PATH. Identity for every agent
+# except `cursor`: the Cursor CLI installs as `cursor-agent` (and, on newer
+# builds, exposes a bare `agent` alias), so resolve to whichever exists. This is
+# the ONLY place a roster name and its binary diverge; keep it that way.
+agent_bin() {
+  case "$1" in
+    cursor)
+      if command -v cursor-agent >/dev/null 2>&1; then printf 'cursor-agent'
+      else printf 'agent'; fi ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 list_agents() {
   local a path
   for a in $AGENTS; do
-    if path="$(command -v "$a" 2>/dev/null)"; then
+    if path="$(command -v "$(agent_bin "$a")" 2>/dev/null)"; then
       printf '  %-9s installed  (%s)\n' "$a" "$path"
     else
       printf '  %-9s not found\n' "$a"
@@ -201,7 +214,7 @@ if [ -n "$panel" ]; then
     if ! is_known_agent "$a"; then
       warn "panel: unknown agent '$a' (expected one of: $AGENTS); skipping"; continue
     fi
-    if ! command -v "$a" >/dev/null 2>&1; then
+    if ! command -v "$(agent_bin "$a")" >/dev/null 2>&1; then
       warn "panel: agent '$a' is not installed or not on PATH; skipping"; continue
     fi
     case " $panel_agents " in *" $a "*) ;; *) panel_agents="$panel_agents $a" ;; esac
@@ -217,7 +230,7 @@ else
   if ! is_known_agent "$agent"; then
     err "unknown agent: $agent (expected one of: $AGENTS)"; exit 2
   fi
-  if ! command -v "$agent" >/dev/null 2>&1; then
+  if ! command -v "$(agent_bin "$agent")" >/dev/null 2>&1; then
     err "agent '$agent' is not installed or not on PATH"; exit 127
   fi
 fi
@@ -353,7 +366,7 @@ fi
 
 # ----- build the agent command ----------------------------------------------
 
-cmd=("$agent")
+cmd=("$(agent_bin "$agent")")
 case "$agent" in
   claude)
     cmd+=(-p)
@@ -407,6 +420,67 @@ case "$agent" in
     [ -n "$model" ] && cmd+=(-m "$model")
     [ -n "$code_dir" ] && cmd+=(-C "$code_dir")
     cmd+=("$prompt")
+    ;;
+  grok)
+    # xAI Grok CLI (superagent-ai/grok-cli): `-p`/`--single` takes the prompt as
+    # its value, prints the answer to stdout, and exits (default output is plain
+    # text). Flags verified against `grok --help`.
+    [ -n "$model" ] && cmd+=(-m "$model")
+    [ "$do_continue" -eq 1 ] && cmd+=(-c)
+    [ -n "$code_dir" ] && cmd+=(--cwd "$code_dir")
+    cmd+=(-p "$prompt")
+    ;;
+  pi)
+    # Pi coding agent (pi.dev): print-and-exit via `pi -p`. `-p`/`--print` is a
+    # boolean; the prompt is the trailing positional. Supports provider/id models.
+    cmd+=(-p)
+    [ -n "$model" ] && cmd+=(--model "$model")
+    [ "$do_continue" -eq 1 ] && cmd+=(-c)
+    [ -n "$code_dir" ] && warn "pi: no working-directory flag; --code ignored (cd into the dir before consulting)."
+    cmd+=("$prompt")
+    ;;
+  cursor)
+    # Cursor CLI (binary `cursor-agent`, or a bare `agent` alias — see agent_bin):
+    # `-p` is print mode but its output DEFAULTS to stream-json, so pin
+    # `--output-format text` for a clean answer. Continue is `--resume` (there is
+    # no --continue). Flags verified against `cursor-agent --help`. Advice-safe:
+    # `-f`/--force is never passed, so a write/bash tool needs an approval the
+    # closed stdin can't give.
+    cmd+=(-p --output-format text)
+    [ -n "$model" ] && cmd+=(--model "$model")
+    [ "$do_continue" -eq 1 ] && cmd+=(--resume)
+    [ -n "$code_dir" ] && warn "cursor: no working-directory flag; --code ignored (cd into the dir before consulting)."
+    cmd+=("$prompt")
+    ;;
+  kilo)
+    # Kilo Code CLI: `kilo run "<msg>"` is non-interactive by default. We do NOT
+    # pass --auto, so any write still hits a permission gate that the closed stdin
+    # cannot approve — the advisor stays advice-only in practice.
+    cmd+=(run)
+    [ -n "$model" ] && cmd+=(-m "$model")
+    [ "$do_continue" -eq 1 ] && cmd+=(-c)
+    [ -n "$code_dir" ] && cmd+=(--dir "$code_dir")
+    cmd+=("$prompt")
+    ;;
+  cline)
+    # Cline CLI: goes headless because consilium always pipes/redirects the
+    # advisor's stdout (the documented non-interactive trigger). Requires a prior
+    # `cline auth` (Cline provider / your own key). No documented resume flag; act
+    # mode needs approval to write, which the closed stdin denies.
+    [ -n "$model" ] && cmd+=(-m "$model")
+    [ -n "$code_dir" ] && cmd+=(--cwd "$code_dir")
+    [ "$do_continue" -eq 1 ] && warn "cline: no documented continue/resume flag; ignoring --continue."
+    cmd+=("$prompt")
+    ;;
+  goose)
+    # Goose CLI (Block): `goose run -t "<prompt>"` executes and exits; `-q` keeps
+    # stdout to just the model's answer. Agentic — advice-only rests on the
+    # preamble, like opencode.
+    cmd+=(run -q)
+    [ -n "$model" ] && cmd+=(--model "$model")
+    [ "$do_continue" -eq 1 ] && cmd+=(-r)
+    [ -n "$code_dir" ] && warn "goose: 'run' has no working-directory flag; --code ignored (cd into the dir before consulting)."
+    cmd+=(-t "$prompt")
     ;;
 esac
 
