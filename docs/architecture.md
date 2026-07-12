@@ -169,17 +169,25 @@ differs per agent, so be honest about it:
 | claude | does not edit in `-p` answer mode without granted permission |
 | agy | does not edit in `-p` answer mode without granted permission (its `--sandbox` flag stalls headless calls, so we don't pass it) |
 | opencode | no read-only flag exists; relies on its default behaviour + the preamble |
-| grok | no read-only flag; relies on its default behaviour + the preamble |
-| pi | no read-only flag; relies on the preamble |
+| grok | no read-only flag; default permission mode still gates writes + the preamble |
+| pi | no built-in permission gate — relies on the preamble only; treat as the WEAKEST, avoid a writable cwd with sensitive files |
 | cursor | `-p` has write/bash tools, but `-f`/`--force` is never passed, so a write needs an approval the closed stdin denies |
-| kilo | `--auto` is never passed, so a write needs an approval the closed stdin can't give |
-| cline | act mode needs an approval to write, which the closed stdin denies |
-| goose | no read-only flag; relies on the preamble |
+| kilo | `--auto` is never passed, so a write needs an approval the closed stdin can't give (a user's own kilo config could still relax this) |
+| cline | cline auto-approves by default, so we pass `--auto-approve false` — a write then needs an approval the closed stdin denies |
+| goose | goose runs tools autonomously by default, so we set `GOOSE_MODE=approve` — a tool call then needs an approval the closed stdin denies |
 
 Guaranteed for every advisor: consilium never passes
 `--dangerously-skip-permissions` (or any equivalent), and the advisor preamble
 tells the advisor to advise only — do not create, modify, or delete files. All
 real edits stay with the hub.
+
+**A subtlety worth stating** (surfaced by a peer review of the v0.6.0 agents): the
+closed-stdin guard only stops an advisor that *asks* before acting. A fully
+autonomous agent that executes tools without prompting is NOT stopped by it — so
+for those (cline, goose) consilium passes an explicit gate (`--auto-approve false`,
+`GOOSE_MODE=approve`) that turns silent execution back into an approval the closed
+stdin denies. `openhands` was rejected precisely because its headless mode forces
+always-approve and offers no such gate.
 
 To stop runaway `A -> B -> A` consultation loops, each call increments
 `CONSILIUM_CALL_DEPTH` in the advisor's environment and aborts (exit 3) once it

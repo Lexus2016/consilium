@@ -123,7 +123,10 @@ $question    = ''
 
 # How to re-invoke ourselves for --panel children: run THIS script with the same
 # pwsh, so a panel is the exact same code path regardless of how it was launched.
-$SelfExe    = [Environment]::ProcessPath
+# Use Process.MainModule.FileName (works on all pwsh 7.0+) rather than
+# [Environment]::ProcessPath, which only exists on .NET 6 / pwsh 7.2+ and returns
+# $null on 7.0/7.1 — breaking panel child spawning there.
+$SelfExe    = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
 $SelfScript = $PSCommandPath
 
 $argv = @($args)
@@ -414,13 +417,13 @@ switch ($agent) {
         $cmdArgs += @('-p', $prompt)
     }
     'pi' {
-        # Pi coding agent (pi.dev): print-and-exit via `pi -p` (boolean; prompt is
-        # the trailing positional). Supports provider/id models.
-        $cmdArgs += '-p'
+        # Pi coding agent (pi.dev): print-and-exit. Docs say `-p` is boolean with a
+        # trailing positional prompt, but that is NOT verified against the binary —
+        # place `-p` + prompt LAST, correct whether -p is boolean or takes a value.
         if ($model)   { $cmdArgs += @('--model', $model) }
         if ($doContinue) { $cmdArgs += '-c' }
         if ($codeDir) { Write-WarnMsg 'pi: no working-directory flag; --code ignored (cd into the dir before consulting).' }
-        $cmdArgs += $prompt
+        $cmdArgs += @('-p', $prompt)
     }
     'cursor' {
         # Cursor CLI (binary cursor-agent, or a bare `agent` alias): `-p` print mode
@@ -446,17 +449,21 @@ switch ($agent) {
     }
     'cline' {
         # Cline CLI: goes headless because consilium always pipes/redirects the
-        # advisor's stdout. Requires a prior `cline auth`. No documented resume flag;
-        # act mode needs approval to write, which the closed stdin denies.
+        # advisor's stdout. Requires `cline auth`. Cline defaults to act mode with
+        # auto-approve, executing tool calls WITHOUT prompting (closed stdin does not
+        # stop it) — pass --auto-approve false to force the gate. (agy+hermes confirmed.)
+        $cmdArgs += @('--auto-approve', 'false')
         if ($model)   { $cmdArgs += @('-m', $model) }
         if ($codeDir) { $cmdArgs += @('--cwd', $codeDir) }
         if ($doContinue) { Write-WarnMsg 'cline: no documented continue/resume flag; ignoring --continue.' }
         $cmdArgs += $prompt
     }
     'goose' {
-        # Goose CLI (Block): `goose run -t "<prompt>"` executes and exits; `-q` keeps
-        # stdout to just the model's answer. Agentic — advice-only rests on the
-        # preamble, like opencode.
+        # Goose CLI (Block): `goose run -t` executes and exits; `-q` keeps stdout to
+        # just the answer. Goose runs tools AUTONOMOUSLY by default (GOOSE_MODE=auto),
+        # so closed stdin does not gate writes — force GOOSE_MODE=approve (honours a
+        # user-set value). Reviewers agy+hermes flagged the autonomy.
+        if (-not $env:GOOSE_MODE) { $env:GOOSE_MODE = 'approve' }
         $cmdArgs += @('run', '-q')
         if ($model)   { $cmdArgs += @('--model', $model) }
         if ($doContinue) { $cmdArgs += '-r' }

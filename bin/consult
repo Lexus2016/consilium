@@ -431,13 +431,14 @@ case "$agent" in
     cmd+=(-p "$prompt")
     ;;
   pi)
-    # Pi coding agent (pi.dev): print-and-exit via `pi -p`. `-p`/`--print` is a
-    # boolean; the prompt is the trailing positional. Supports provider/id models.
-    cmd+=(-p)
+    # Pi coding agent (pi.dev): print-and-exit. Docs say `-p`/`--print` is boolean
+    # with the prompt as a trailing positional, but that is NOT verified against the
+    # binary — so place `-p "$prompt"` LAST, which is correct whether -p is boolean
+    # (prompt = positional) OR consumes the next token as its value (like grok's -p).
     [ -n "$model" ] && cmd+=(--model "$model")
     [ "$do_continue" -eq 1 ] && cmd+=(-c)
     [ -n "$code_dir" ] && warn "pi: no working-directory flag; --code ignored (cd into the dir before consulting)."
-    cmd+=("$prompt")
+    cmd+=(-p "$prompt")
     ;;
   cursor)
     # Cursor CLI (binary `cursor-agent`, or a bare `agent` alias — see agent_bin):
@@ -465,8 +466,11 @@ case "$agent" in
   cline)
     # Cline CLI: goes headless because consilium always pipes/redirects the
     # advisor's stdout (the documented non-interactive trigger). Requires a prior
-    # `cline auth` (Cline provider / your own key). No documented resume flag; act
-    # mode needs approval to write, which the closed stdin denies.
+    # `cline auth`. Cline defaults to act mode with auto-approve, so it executes
+    # tool calls WITHOUT prompting — the closed stdin does NOT stop it. Pass
+    # `--auto-approve false` to force the approval gate the closed stdin then denies.
+    # (Reviewers agy+hermes independently confirmed the default-auto-approve hole.)
+    cmd+=(--auto-approve false)
     [ -n "$model" ] && cmd+=(-m "$model")
     [ -n "$code_dir" ] && cmd+=(--cwd "$code_dir")
     [ "$do_continue" -eq 1 ] && warn "cline: no documented continue/resume flag; ignoring --continue."
@@ -474,8 +478,11 @@ case "$agent" in
     ;;
   goose)
     # Goose CLI (Block): `goose run -t "<prompt>"` executes and exits; `-q` keeps
-    # stdout to just the model's answer. Agentic — advice-only rests on the
-    # preamble, like opencode.
+    # stdout to just the model's answer. Goose runs tools AUTONOMOUSLY by default
+    # (GOOSE_MODE=auto), so the closed stdin does NOT gate writes. Force
+    # GOOSE_MODE=approve so any tool call needs an approval the closed stdin denies
+    # (honours a user-set GOOSE_MODE). Reviewers agy+hermes flagged the autonomy.
+    export GOOSE_MODE="${GOOSE_MODE:-approve}"
     cmd+=(run -q)
     [ -n "$model" ] && cmd+=(--model "$model")
     [ "$do_continue" -eq 1 ] && cmd+=(-r)
