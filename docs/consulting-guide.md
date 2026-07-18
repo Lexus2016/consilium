@@ -59,6 +59,7 @@ model family as you**. A second instance of yourself mostly agrees with itself.
 | `kilo` | model-agnostic (provider/model you set) | another configurable voice, can read `--code` |
 | `cline` | model-agnostic (needs `cline auth`) | a configurable voice, can read `--code` |
 | `goose` | model-agnostic (provider/model you set) | Block's agent as an independent voice |
+| `kimi` | Moonshot AI (Kimi K2) | another frontier provider's take; can read `--code` |
 
 If you're Claude, prefer `codex` or `agy`. If you're Codex, prefer `claude`.
 

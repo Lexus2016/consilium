@@ -14,7 +14,7 @@ set -euo pipefail
 VERSION="0.6.1"
 PROG="consult"
 
-AGENTS="claude agy hermes opencode codex grok pi cursor kilo cline goose"
+AGENTS="claude agy hermes opencode codex grok pi cursor kilo cline goose kimi"
 PREAMBLE="You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files."
 # Used by --review. Deliberately adversarial: a reviewer told to 'assess quality'
 # rubber-stamps; a reviewer told to 'find where the RESULT fails the TASK' catches
@@ -38,7 +38,7 @@ usage:
   <command> | $PROG <agent> [options] -- <question...>
 
 agents:
-  claude | agy | hermes | opencode | codex | grok | pi | cursor | kilo | cline | goose
+  claude | agy | hermes | opencode | codex | grok | pi | cursor | kilo | cline | goose | kimi
 
 council (needs python3):
   $PROG council audits CODE with a multi-agent panel (different providers),
@@ -488,6 +488,21 @@ case "$agent" in
     [ "$do_continue" -eq 1 ] && cmd+=(-r)
     [ -n "$code_dir" ] && warn "goose: 'run' has no working-directory flag; --code ignored (cd into the dir before consulting)."
     cmd+=(-t "$prompt")
+    ;;
+  kimi)
+    # Kimi Code CLI (Moonshot AI, binary `kimi`): `-p/--prompt <prompt>` runs one
+    # prompt non-interactively, prints the answer, and exits. The prompt is -p's
+    # VALUE, so every flag precedes it and the prompt is the final token. Output
+    # defaults to text (no --output-format pin needed, unlike cursor). Working dir
+    # is passed with --add-dir (like claude/agy). Advice-safe: neither -y/--yolo
+    # nor --auto is passed, so approval mode stays interactive and any write/tool
+    # call hits a gate the closed stdin cannot approve. Verified against
+    # `kimi --help` + a live `kimi -p` probe on v0.27.0 (exit 0, answer on stdout;
+    # its reasoning trace and session-resume hint go to stderr, not the answer).
+    [ -n "$model" ] && cmd+=(-m "$model")
+    [ "$do_continue" -eq 1 ] && cmd+=(-c)
+    [ -n "$code_dir" ] && cmd+=(--add-dir "$code_dir")
+    cmd+=(-p "$prompt")
     ;;
 esac
 

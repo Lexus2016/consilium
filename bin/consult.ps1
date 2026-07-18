@@ -16,7 +16,7 @@ $ErrorActionPreference = 'Stop'
 
 $Version  = '0.6.1'
 $Prog     = 'consult'
-$Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex', 'grok', 'pi', 'cursor', 'kilo', 'cline', 'goose')
+$Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex', 'grok', 'pi', 'cursor', 'kilo', 'cline', 'goose', 'kimi')
 $Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files.'
 # Used by --review. Deliberately adversarial: a reviewer told to 'assess quality'
 # rubber-stamps; one told to 'find where the RESULT fails the TASK' catches real
@@ -46,7 +46,7 @@ usage:
   <command> | $Prog <agent> [options] -- <question...>
 
 agents:
-  claude | agy | hermes | opencode | codex | grok | pi | cursor | kilo | cline | goose
+  claude | agy | hermes | opencode | codex | grok | pi | cursor | kilo | cline | goose | kimi
 
 options:
   --panel LIST     ask several advisors in parallel (comma-separated), each
@@ -469,6 +469,20 @@ switch ($agent) {
         if ($doContinue) { $cmdArgs += '-r' }
         if ($codeDir) { Write-WarnMsg "goose: 'run' has no working-directory flag; --code ignored (cd into the dir before consulting)." }
         $cmdArgs += @('-t', $prompt)
+    }
+    'kimi' {
+        # Kimi Code CLI (Moonshot AI, binary `kimi`): `-p/--prompt <prompt>` runs one
+        # prompt non-interactively, prints the answer, and exits. The prompt is -p's
+        # VALUE, so flags precede it and the prompt is the final token. Output
+        # defaults to text (no --output-format pin needed, unlike cursor). Working
+        # dir is passed with --add-dir (like claude/agy). Advice-safe: neither
+        # -y/--yolo nor --auto is passed, so approval mode stays interactive and any
+        # write hits a gate the closed stdin cannot approve. Verified against
+        # `kimi --help` + a live `kimi -p` probe (v0.27.0).
+        if ($model)   { $cmdArgs += @('-m', $model) }
+        if ($doContinue) { $cmdArgs += '-c' }
+        if ($codeDir) { $cmdArgs += @('--add-dir', $codeDir) }
+        $cmdArgs += @('-p', $prompt)
     }
 }
 

@@ -23,6 +23,11 @@ AGENT_PROVIDERS: dict[str, str] = {
     "agy": "google",
     "hermes": "openrouter/moonshot",
     "grok": "xai",
+    # Kimi Code talks to Moonshot's own Kimi models (K2), so it is a NAMED provider,
+    # not a model-agnostic front-end. Bucketed as "moonshot". (hermes is tagged
+    # "openrouter/moonshot"; kept as a distinct bucket because hermes's configured
+    # model varies — a user who runs hermes on Moonshot too should merge the two.)
+    "kimi": "moonshot",
     # `opencode`, `pi`, `cursor`, `kilo`, `cline`, and `goose` are model-agnostic
     # front-ends: the real provider is whatever the user configured, so we cannot
     # assign one reliably. Bucketing each under its own name means the cross-
@@ -39,10 +44,10 @@ AGENT_PROVIDERS: dict[str, str] = {
 }
 
 # Agents whose `consult` dispatch actually passes the working directory through
-# to the model (claude/agy via --add-dir, codex via -C, grok via --cwd, kilo via
-# --dir, cline via --cwd). hermes/opencode/pi/cursor/goose ignore --code, so they
-# must NOT be chosen as the synthesizer when code access matters.
-AGENTS_WITH_CODE_ACCESS = {"claude", "agy", "codex", "grok", "kilo", "cline"}
+# to the model (claude/agy/kimi via --add-dir, codex via -C, grok via --cwd, kilo
+# via --dir, cline via --cwd). hermes/opencode/pi/cursor/goose ignore --code, so
+# they must NOT be chosen as the synthesizer when code access matters.
+AGENTS_WITH_CODE_ACCESS = {"claude", "agy", "codex", "grok", "kilo", "cline", "kimi"}
 
 VALID_RECIPES = {"parallel", "verify"}
 

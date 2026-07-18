@@ -61,7 +61,7 @@ consult <agent> [options] "<question>"
 consult --panel <a,b,c> [options] -- <question...>
 <command> | consult <agent> [options] -- <question...>
 
-agents:  claude | agy | hermes | opencode | codex | grok | pi | cursor | kilo | cline | goose
+agents:  claude | agy | hermes | opencode | codex | grok | pi | cursor | kilo | cline | goose | kimi
 options:
   --panel LIST     fan the question out to several advisors in parallel; print
                    all answers back-to-back (independent, never a debate)
@@ -112,6 +112,7 @@ duplicates collapsed.
 | kilo | `kilo run [-m M] [-c] [--dir DIR] "<prompt>"` (no `--auto`) |
 | cline | `cline [-m M] [--cwd DIR] "<prompt>"` (headless via redirected stdout; needs `cline auth`) |
 | goose | `goose run -q [--model M] [-r] -t "<prompt>"` (no `--code`) |
+| kimi | `kimi [-m M] [-c] [--add-dir DIR] -p "<prompt>"` (`-p`/`--prompt` takes the prompt) |
 
 **Prompt assembly (unless `--raw`):** advisor preamble + optional `## Context`
 (file contents) + optional `## Input` (piped stdin) + `## Question`. The default
@@ -175,6 +176,7 @@ differs per agent, so be honest about it:
 | kilo | `--auto` is never passed, so a write needs an approval the closed stdin can't give (a user's own kilo config could still relax this) |
 | cline | cline auto-approves by default, so we pass `--auto-approve false` — a write then needs an approval the closed stdin denies |
 | goose | goose runs tools autonomously by default, so we set `GOOSE_MODE=approve` — a tool call then needs an approval the closed stdin denies |
+| kimi | `-y`/`--yolo` and `--auto` are never passed, so approval mode stays interactive and a write needs an approval the closed stdin can't give (a user's own kimi config could still relax this) |
 
 Guaranteed for every advisor: consilium never passes
 `--dangerously-skip-permissions` (or any equivalent), and the advisor preamble

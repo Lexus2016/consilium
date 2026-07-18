@@ -64,6 +64,7 @@ right.
 | `kilo`     | Kilo Code (the model you set)  | Kilo          |
 | `cline`    | Cline (the model you set)      | Cline         |
 | `goose`    | Goose (the model you set)      | Block         |
+| `kimi`     | Kimi                           | Moonshot AI   |
 
 Pick a row that *isn't* the AI you're already using. A second Claude mostly agrees
 with the first.
