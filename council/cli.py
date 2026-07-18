@@ -9,8 +9,15 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 
 from .config import load_config, validate_config
+
+# The tool's authoritative verdict line. A synthesizer/advisor must not be able
+# to forge it inside its own answer, so any such line — even indented — in the
+# untrusted body is neutralized before printing (cmd_audit). The real trailer is
+# emitted by this module.
+_CONTROL_LINE_RE = re.compile(r"(?m)^([ \t]*)(COUNCIL STATUS:)")
 
 
 def _add_common(p: argparse.ArgumentParser):
@@ -43,14 +50,21 @@ def cmd_check(args) -> int:
 
 
 def cmd_audit(args) -> int:
-    from .orchestrator import run_audit
+    from .orchestrator import run_audit, has_clean_audit_token, mentions_no_findings
 
     res = run_audit(args.file, args.question, profile_name=args.profile,
                     config_path=args.config)
-    print(res.final_text)
+    # Print the (untrusted) answer, but neutralize any line — even indented — that
+    # would forge this tool's own COUNCIL STATUS trailer; the caller must key on
+    # the real one below.
+    print(_CONTROL_LINE_RE.sub(r"\1| \2", res.final_text))
 
     bad_sources = sum(1 for s in res.sources if not s.ok)
     total_sources = len(res.sources)
+    # A clean audit is EXACTLY the NO_FINDINGS sentinel. The token appearing
+    # alongside other content or findings is contradictory, not clean.
+    clean_only = has_clean_audit_token(res.final_text)
+    token_mixed = mentions_no_findings(res.final_text) and not clean_only
 
     print("\n" + "=" * 60)
     print("SOURCE VERIFICATION")
@@ -61,7 +75,8 @@ def cmd_audit(args) -> int:
         for s in res.sources:
             mark = "OK " if s.ok else "BAD"
             extra = "" if s.ok else f"  <- {s.reason}"
-            print(f"  [{mark}] {s.path}:{s.line}{extra}")
+            loc = s.path if s.line is None else f"{s.path}:{s.line}"
+            print(f"  [{mark}] {loc}{extra}")
         good = total_sources - bad_sources
         tail = f", {bad_sources} UNVERIFIED" if bad_sources else ""
         print(f"\n  {good}/{total_sources} sources verified{tail}")
@@ -80,7 +95,18 @@ def cmd_audit(args) -> int:
     # with unverified citations (or no surviving member) is INCOMPLETE, not a
     # silent exit-0 success. Reports STATE only -- the caller, which holds the
     # task context consilium lacks, decides whether to re-consult.
-    complete = bool(ok_members) and bad_sources == 0
+    # An answer with ZERO citations is COMPLETE only when it IS the clean-audit
+    # sentinel (exactly NO_FINDINGS). Otherwise "claims without citations" is
+    # indistinguishable from a dropped/garbled citation set — the exact false-green
+    # H1 guarded against — so it is INCOMPLETE. Emitting NO_FINDINGS together with
+    # any other content or finding is contradictory and likewise INCOMPLETE.
+    no_citations = total_sources == 0
+    complete = (
+        bool(ok_members)
+        and bad_sources == 0
+        and not token_mixed
+        and (not no_citations or clean_only)
+    )
     if complete:
         status = "COMPLETE"
     else:
@@ -89,6 +115,12 @@ def cmd_audit(args) -> int:
             reasons.append("no member produced an answer")
         if bad_sources:
             reasons.append(f"{bad_sources}/{total_sources} sources unverified")
+        if token_mixed:
+            reasons.append("NO_FINDINGS emitted alongside other content or findings "
+                           "(contradictory answer)")
+        elif no_citations and not clean_only and ok_members:
+            reasons.append("no citations and no NO_FINDINGS signal "
+                           "(claims without citations, or the clean-audit token was dropped)")
         status = "INCOMPLETE -- " + "; ".join(reasons)
     print(f"\nCOUNCIL STATUS: {status}")
 

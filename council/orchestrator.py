@@ -32,7 +32,7 @@ DEFAULT_MAX_EMBEDDED_LINES = 6000
 @dataclass
 class SourceCheck:
     path: str
-    line: int
+    line: int | None  # None = a SOURCE-shaped line we could not parse
     ok: bool
     reason: str = ""
 
@@ -45,6 +45,28 @@ class AuditResult:
     note: str = ""
 
 
+# Machine sentinel a member/synthesizer emits when a review found NOTHING to
+# report. Without it, an answer with zero citations is ambiguous — "made claims
+# but cited nothing" looks identical to "correctly had nothing to cite". The
+# verifier treats a zero-citation answer as INCOMPLETE UNLESS this token is present.
+NO_FINDINGS_TOKEN = "NO_FINDINGS"
+_NO_FINDINGS_RE = re.compile(r"(?m)^\s*NO_FINDINGS\s*$")
+
+
+def has_clean_audit_token(final_text: str) -> bool:
+    """True iff the ENTIRE answer is the clean-audit sentinel and nothing else.
+    A clean audit is exactly ``NO_FINDINGS`` — any other content means the answer
+    is making claims and must cite them (or it is INCOMPLETE). Matching the token
+    merely *somewhere* would let ``NO_FINDINGS`` + an uncited claim pass as COMPLETE."""
+    return final_text.strip() == NO_FINDINGS_TOKEN
+
+
+def mentions_no_findings(final_text: str) -> bool:
+    """True iff a standalone ``NO_FINDINGS`` line appears anywhere. Used to detect
+    the contradiction of emitting it ALONGSIDE other content or real findings."""
+    return bool(_NO_FINDINGS_RE.search(final_text))
+
+
 SOURCE_RULE = (
     "OUTPUT RULES (mandatory):\n"
     "- For EVERY finding, end it with a line exactly like:\n"
@@ -53,8 +75,28 @@ SOURCE_RULE = (
     "  Do NOT invent or approximate line numbers.\n"
     "- Cite ONLY the file paths shown below. If you cannot point to a specific\n"
     "  line in the given code, DROP the finding.\n"
+    f"- If you find NO issues to report, output exactly one line: {NO_FINDINGS_TOKEN}\n"
+    "  (and nothing else). Do NOT output it together with any finding.\n"
     "- Output ONLY your findings. Do NOT echo the code, the prompt, or these rules."
 )
+
+
+def _norm(path: str) -> str:
+    """Single canonical path form used everywhere: the FILE header shown to
+    advisors, the embedded-file set, and citation checking. Consistency here is
+    what makes a citation match what the advisor actually saw (expanduser +
+    realpath, so ``~/x`` and symlink aliases resolve to one form on both sides)."""
+    return os.path.realpath(os.path.expanduser(str(path)))
+
+
+def _line_count(path: str) -> int:
+    """Count lines the SAME way _number_file numbers them (splitlines), so a
+    citation to the last shown line never reads as out-of-range near EOF."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return len(f.read().splitlines())
+    except OSError:
+        return 0
 
 
 def _number_file(abs_path: str) -> tuple[str, int]:
@@ -65,24 +107,34 @@ def _number_file(abs_path: str) -> tuple[str, int]:
     return f"// FILE: {abs_path}\n{body}", len(lines)
 
 
-def gather_code(files: list[str], max_lines: int = DEFAULT_MAX_EMBEDDED_LINES) -> str:
+def gather_code(files: list[str], max_lines: int = DEFAULT_MAX_EMBEDDED_LINES) -> tuple[str, set[str]]:
     """Read, number and concatenate ``files`` within ``max_lines``.
 
-    The first file is always included even if it alone exceeds the budget;
-    subsequent over-budget files are dropped with a visible ``[TRUNCATED ...]``
-    marker so the omission is never silent.
+    Returns ``(embedded_text, embedded_paths)`` where ``embedded_paths`` is the
+    set of files ACTUALLY shown to the advisors (normalized). The first file is
+    always included even if it alone exceeds the budget; subsequent over-budget
+    files are dropped with a visible ``[TRUNCATED ...]`` marker so the omission is
+    never silent — and, crucially, they are NOT in ``embedded_paths``, so a
+    citation to one is flagged rather than passing as verified. Duplicate ``-f``
+    paths are collapsed so the same file is never embedded twice.
     """
     blocks: list[str] = []
     omitted: list[tuple[str, int]] = []
+    embedded: set[str] = set()
+    seen: set[str] = set()
     used = 0
     for path in files:
-        ap = os.path.abspath(path)
+        ap = _norm(path)
+        if ap in seen:
+            continue
+        seen.add(ap)
         block, n = _number_file(ap)
         if blocks and used + n > max_lines:
             omitted.append((ap, n))
             continue
         blocks.append(block)
         used += n
+        embedded.add(ap)
     text = "\n\n".join(blocks)
     if omitted:
         marker = "\n".join(
@@ -91,7 +143,7 @@ def gather_code(files: list[str], max_lines: int = DEFAULT_MAX_EMBEDDED_LINES) -
             for p, n in omitted
         )
         text = f"{text}\n\n{marker}"
-    return text
+    return text, embedded
 
 
 def build_question(code_block: str, user_question: str) -> str:
@@ -103,35 +155,58 @@ def build_question(code_block: str, user_question: str) -> str:
     )
 
 
-_SOURCE_RE = re.compile(r"SOURCE:\s*(\S+?):(\d+)")
+# A citation line the advisor is told to emit: `SOURCE: <path>:<line> (function ...)`.
+# `_SOURCE_ANY` finds each SOURCE marker; `_CITE` then parses `path:line` from the
+# rest. The path is non-greedy so it tolerates spaces AND colons, and the line
+# number must be followed by whitespace, `(`, or end — so `:5` inside `/a:5/b.py:10`
+# does not win over the real `:10`. A SOURCE marker whose rest fails `_CITE` is a
+# MALFORMED citation: it is flagged BAD, never silently ignored.
+_SOURCE_ANY = re.compile(r"SOURCE:[ \t]*([^\n]*)")
+_CITE = re.compile(r"^(?P<path>.+?):(?P<line>\d+)(?=\s|\(|$)")
 
 
-def verify_sources(final_text: str, abs_files: set[str]) -> list[SourceCheck]:
-    """Parse every ``SOURCE: <path>:<line>`` and check it against the real files.
+def verify_sources(
+    final_text: str,
+    embedded_files: set[str],
+    input_files: set[str] | None = None,
+) -> list[SourceCheck]:
+    """Parse every ``SOURCE:`` citation and check it against the real files.
 
-    A citation is ``ok`` iff its path is one we actually sent AND the line is
-    within that file. Everything else (unknown path, line past EOF) is a flagged
-    miss — the mechanical hallucination check.
+    ``embedded_files`` is the set of files ACTUALLY shown to the advisors (from
+    ``gather_code``); ``input_files`` (default: the same set) is every file the
+    caller passed. A citation is ``ok`` iff its path was embedded AND the line is
+    within that file. A citation to an ``input`` file that was dropped by the embed
+    budget is flagged "file not shown to advisors" (it is a guaranteed
+    hallucination — the advisor never saw it); an unknown path or an out-of-range
+    line is likewise flagged; a SOURCE-shaped line that does not parse is flagged
+    "unparseable citation" rather than vanishing.
     """
-    counts: dict[str, int] = {}
-    for p in abs_files:
-        try:
-            with open(p, encoding="utf-8", errors="replace") as f:
-                counts[p] = sum(1 for _ in f)
-        except OSError:
-            counts[p] = 0
+    if input_files is None:
+        input_files = embedded_files
+    counts = {p: _line_count(p) for p in embedded_files}
 
     checks: list[SourceCheck] = []
-    for m in _SOURCE_RE.finditer(final_text):
-        raw_path, line = m.group(1), int(m.group(2))
-        ap = os.path.abspath(raw_path)
-        if ap not in abs_files:
-            checks.append(SourceCheck(raw_path, line, False, "path not in audited set"))
-        elif not (1 <= line <= counts[ap]):
+    for m in _SOURCE_ANY.finditer(final_text):
+        rest = m.group(1).strip()
+        pm = _CITE.match(rest)
+        if not pm:
+            checks.append(SourceCheck(rest or "(empty)", None, False, "unparseable citation"))
+            continue
+        raw_path = pm.group("path").strip()
+        line = int(pm.group("line"))
+        cp = _norm(raw_path)
+        if cp in embedded_files:
+            n = counts.get(cp, 0)
+            if 1 <= line <= n:
+                checks.append(SourceCheck(raw_path, line, True))
+            else:
+                checks.append(SourceCheck(raw_path, line, False,
+                                          f"line out of range (file has {n})"))
+        elif cp in input_files:
             checks.append(SourceCheck(raw_path, line, False,
-                                      f"line out of range (file has {counts[ap]})"))
+                                      "file not shown to advisors (over budget)"))
         else:
-            checks.append(SourceCheck(raw_path, line, True))
+            checks.append(SourceCheck(raw_path, line, False, "path not in audited set"))
     return checks
 
 
@@ -168,9 +243,9 @@ def run_audit(
     if profile_name not in cfg.profiles:
         raise SystemExit(f"unknown profile {profile_name!r}; have {sorted(cfg.profiles)}")
     profile = cfg.profiles[profile_name]
-    abs_files = {os.path.abspath(f) for f in files}
+    abs_files = {_norm(f) for f in files}
 
-    code_block = gather_code(files, max_lines=cfg.max_embedded_lines)
+    code_block, embedded_files = gather_code(files, max_lines=cfg.max_embedded_lines)
     question = build_question(code_block, user_question)
     member_timeout = profile.member_timeout_seconds or cfg.member_timeout_seconds
 
@@ -203,6 +278,6 @@ def run_audit(
         raise
 
     final = _strip_boilerplate(raw_text, cfg.strip_patterns)
-    sources = verify_sources(final, abs_files)
+    sources = verify_sources(final, embedded_files, input_files=abs_files)
     note = " | ".join(x for x in (roster_note, run_note) if x)
     return AuditResult(final, members, sources, note)
