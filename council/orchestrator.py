@@ -19,8 +19,8 @@ import sys
 from dataclasses import dataclass
 
 from .config import load_config
-from .spawn import ProcessRegistry, run_agent
-from .recipes import run_recipe
+from .spawn import ProcessRegistry
+from .recipes import run_recipe, _run_member
 from .roster import list_available_agents, resolve_roster
 
 # Default budget of embedded code lines across all files. Over this, extra files
@@ -247,7 +247,13 @@ def run_audit(
 
     code_block, embedded_files = gather_code(files, max_lines=cfg.max_embedded_lines)
     question = build_question(code_block, user_question)
-    member_timeout = profile.member_timeout_seconds or cfg.member_timeout_seconds
+    # A configured member_timeout_seconds of 0 must be honored/rejected, not
+    # silently coerced to the default by `or` (L7).
+    member_timeout = (
+        profile.member_timeout_seconds
+        if profile.member_timeout_seconds is not None
+        else cfg.member_timeout_seconds
+    )
 
     # Resolve the POLICY profile into a concrete roster from live availability.
     # Fewer agents -> smaller council; one agent -> run it directly; none -> error.
@@ -266,7 +272,9 @@ def run_audit(
             )
             raw_text, members, run_note = result.final_text, result.members, result.note
         elif single_agent is not None:
-            m = run_agent(
+            # Route through _run_member so the lone agent gets the SAME one-retry
+            # on a transient failure that panel members get (M11).
+            m = _run_member(
                 single_agent, question, role="panel", context_file=None,
                 code_dir=None, timeout_seconds=member_timeout, registry=registry,
             )

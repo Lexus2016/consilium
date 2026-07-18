@@ -22,7 +22,7 @@ import os
 import re
 import subprocess
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait as _wait, FIRST_EXCEPTION as _FIRST_EXCEPTION
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -174,12 +174,39 @@ def run_recipe(
             os.unlink(ctx_file)
 
 
-def _parallel_map(agents, fn):
-    """Run fn(agent) for each agent concurrently, preserving order."""
+def _parallel_map(agents, fn, registry=None):
+    """Run fn(agent) for each agent concurrently, preserving order.
+
+    On KeyboardInterrupt OR any error escaping ANY worker (not just the first in
+    input order), the paid child processes are cancelled IMMEDIATELY via
+    ``registry.cancel_all()`` and the pool is torn down WITHOUT waiting on the
+    workers — otherwise ``shutdown(wait=True)`` would block for the full member
+    timeout (×retry): the ~31-minute Ctrl-C hang the audit flagged. Results
+    preserve input order.
+    """
     if not agents:
         return []
-    with ThreadPoolExecutor(max_workers=len(agents)) as ex:
-        return list(ex.map(fn, agents))
+    ex = ThreadPoolExecutor(max_workers=len(agents))
+    futures = [ex.submit(fn, a) for a in agents]
+    try:
+        pending = set(futures)
+        while pending:
+            # FIRST_EXCEPTION returns as soon as ANY worker raises (regardless of
+            # submission order); the 0.5s timeout keeps the wait interruptible so a
+            # KeyboardInterrupt reaches the main thread promptly.
+            done, pending = _wait(pending, timeout=0.5, return_when=_FIRST_EXCEPTION)
+            for f in done:
+                exc = f.exception()
+                if exc is not None:
+                    raise exc
+        results = [f.result() for f in futures]
+        ex.shutdown(wait=True)
+        return results
+    except BaseException:
+        if registry is not None:
+            registry.cancel_all()
+        ex.shutdown(wait=False, cancel_futures=True)
+        raise
 # Cap on how long the synthesizer alone may run. It already waited on the whole
 # panel; if it then stalls on a big input, fail fast to the fallback (strongest
 # single answer) instead of burning the full member_timeout.
@@ -246,7 +273,7 @@ def _run_parallel(
             code_dir=code_dir, timeout_seconds=member_timeout, registry=registry,
         )
 
-    members = _parallel_map(list(enumerate(profile.panel)), ask)
+    members = _parallel_map(list(enumerate(profile.panel)), ask, registry=registry)
     ok = [m for m in members if m.ok]
 
     if registry.cancelled:
@@ -299,7 +326,7 @@ def _run_verify(
             registry=registry,
         )
 
-    reviews = _parallel_map(list(enumerate(profile.reviewers)), review)
+    reviews = _parallel_map(list(enumerate(profile.reviewers)), review, registry=registry)
     ok_reviews = [r for r in reviews if r.ok]
     members = [draft] + reviews
 

@@ -160,6 +160,7 @@ if [ "${1:-}" = "council" ]; then
   fi
   exec env PYTHONPATH="$_root${PYTHONPATH:+:$PYTHONPATH}" \
            COUNCIL_CONFIG="${COUNCIL_CONFIG:-$_root/config/council.json}" \
+           COUNCIL_CONSULT_BIN="${COUNCIL_CONSULT_BIN:-$_root/bin/consult}" \
            python3 -m council "$subcmd" "$@"
 fi
 
@@ -203,6 +204,12 @@ fi
 if [ -n "$code_dir" ] && [ ! -d "$code_dir" ]; then
   err "code dir not found: $code_dir"; exit 2
 fi
+# Refuse a flag-like --model value: it is forwarded as a token to the advisor CLI,
+# so a value beginning with '-' could inject an unintended (e.g. permission-
+# granting) flag. Real model names never start with '-'.
+case "$model" in
+  -*) err "--model value must not begin with '-' (got '$model')"; exit 2 ;;
+esac
 
 # panel_agents is the resolved, validated list for --panel mode; empty in
 # single-advisor mode.
@@ -290,6 +297,11 @@ if [ -n "$panel_agents" ]; then
 
   paneldir="$(mktemp -d "${TMPDIR:-/tmp}/consilium-panel.XXXXXX")"
   pids=""
+  # On interrupt, tear down the panel children AND their process groups so a
+  # Ctrl-C / SIGTERM does not leave paid advisor processes running. `-$_pp` (a
+  # negative pid) targets the child's whole process group when it is a group
+  # leader (spawned via setsid below); the fallback signals the direct child.
+  trap 'for _pp in $pids; do kill -TERM "-$_pp" 2>/dev/null || kill -TERM "$_pp" 2>/dev/null || true; done; exit 130' INT TERM
   idx=0
   for a in $panel_agents; do
     idx=$((idx + 1))
@@ -304,7 +316,12 @@ if [ -n "$panel_agents" ]; then
       [ "$raw" -eq 1 ]         && child+=(--raw)
       [ "$review" -eq 1 ]      && child+=(--review)
       [ "$no_log" -eq 1 ]      && child+=(--no-log)
-      "${child[@]}" -- "$question"
+      child+=(-- "$question")
+      # setsid (where present) makes this child its own process-group leader so the
+      # trap can kill the whole child tree (nested consult + advisor grandchild) as
+      # a unit; exec so $! is that leader. Stock macOS has no setsid -> exec directly
+      # (Ctrl-C still reaches the tree via the shared terminal group).
+      if command -v setsid >/dev/null 2>&1; then exec setsid "${child[@]}"; else exec "${child[@]}"; fi
     ) >"$out" 2>"$err" </dev/null &
     pids="$pids $!"
   done
@@ -313,6 +330,7 @@ if [ -n "$panel_agents" ]; then
   for p in $pids; do
     if ! wait "$p"; then panel_status=1; fi
   done
+  trap - INT TERM
 
   idx=0
   for a in $panel_agents; do
@@ -511,9 +529,11 @@ case "$agent" in
     # Goose CLI (Block): `goose run -t "<prompt>"` executes and exits; `-q` keeps
     # stdout to just the model's answer. Goose runs tools AUTONOMOUSLY by default
     # (GOOSE_MODE=auto), so the closed stdin does NOT gate writes. Force
-    # GOOSE_MODE=approve so any tool call needs an approval the closed stdin denies
-    # (honours a user-set GOOSE_MODE). Reviewers agy+hermes flagged the autonomy.
-    export GOOSE_MODE="${GOOSE_MODE:-approve}"
+    # GOOSE_MODE=approve UNCONDITIONALLY so any tool call needs an approval the
+    # closed stdin denies — a preset GOOSE_MODE=auto is deliberately overridden,
+    # because the tool's contract is read-only advice. Reviewers agy+hermes flagged
+    # the autonomy.
+    export GOOSE_MODE=approve
     cmd+=(run -q)
     [ -n "$model" ] && cmd+=(--model "$model")
     [ "$do_continue" -eq 1 ] && cmd+=(-r)
@@ -545,9 +565,9 @@ if [ -n "${CONSILIUM_TIMEOUT:-}" ]; then
     *[!0-9]*|"") warn "CONSILIUM_TIMEOUT must be a whole number of seconds; ignoring" ;;
     *)
       if command -v timeout >/dev/null 2>&1; then
-        runner=(timeout "$CONSILIUM_TIMEOUT")
+        runner=(timeout -k 10 "$CONSILIUM_TIMEOUT")
       elif command -v gtimeout >/dev/null 2>&1; then
-        runner=(gtimeout "$CONSILIUM_TIMEOUT")
+        runner=(gtimeout -k 10 "$CONSILIUM_TIMEOUT")
       else
         warn "CONSILIUM_TIMEOUT set but no 'timeout'/'gtimeout' found; running without it"
       fi
@@ -611,18 +631,25 @@ if [ "$no_log" -eq 1 ]; then
   exit "$status"
 fi
 
-mkdir -p "$LOG_DIR"
+# Transcripts contain the FULL prompt (question + any --context + piped diff), so
+# keep them owner-private (umask 077 -> dir 700, file 600) instead of the default
+# 022 that leaves them readable by other local users. chmod the dir too, so an
+# ALREADY-existing log dir (created before this fix) is tightened as well.
+( umask 077; mkdir -p "$LOG_DIR" )
+chmod 700 "$LOG_DIR" 2>/dev/null || true
 ts="$(date +%Y%m%d-%H%M%S)"
 logfile="$LOG_DIR/${ts}-${agent}-$$.md"
 
-{
-  printf '# consilium consult — %s — %s\n\n' "$agent" "$ts"
-  [ "$attempt" -gt 0 ] && printf '> note: the advisor returned an empty answer on %s earlier attempt(s) before this one.\n\n' "$attempt"
-  printf '## Prompt\n\n```\n%s\n```\n\n' "$prompt"
-  printf '## Answer\n\n'
-  cat "$tmp"
-  printf '\n'
-} > "$logfile"
+( umask 077
+  {
+    printf '# consilium consult — %s — %s\n\n' "$agent" "$ts"
+    [ "$attempt" -gt 0 ] && printf '> note: the advisor returned an empty answer on %s earlier attempt(s) before this one.\n\n' "$attempt"
+    printf '## Prompt\n\n```\n%s\n```\n\n' "$prompt"
+    printf '## Answer\n\n'
+    cat "$tmp"
+    printf '\n'
+  } > "$logfile"
+)
 
 rm -f "$tmp"
 printf '\n[consilium] transcript: %s\n' "$logfile" >&2

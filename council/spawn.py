@@ -12,6 +12,7 @@ spending a cent on real agent calls.
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -80,17 +81,31 @@ class ProcessRegistry:
             _terminate(proc)
 
 
-def _terminate(proc: subprocess.Popen) -> None:
+def _signal_group(proc: subprocess.Popen, sig: int) -> None:
+    """Signal the child's WHOLE process group, not just the direct child.
+
+    Members are spawned with ``start_new_session=True``, so ``consult`` is a group
+    leader and the real advisor (a ``timeout … | tee`` grandchild) shares its
+    group. Signalling only ``proc`` would leave that paid grandchild running.
+    Falls back to signalling the direct child if the group is already gone."""
     try:
-        proc.terminate()
-    except Exception:
-        pass
-    # Best-effort reap so a cancelled child is not left as a zombie.
+        os.killpg(os.getpgid(proc.pid), sig)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.send_signal(sig)
+        except Exception:
+            pass
+
+
+def _terminate(proc: subprocess.Popen) -> None:
+    _signal_group(proc, signal.SIGTERM)
+    # Best-effort reap so a cancelled child (and its group) is not left behind.
     try:
         proc.wait(timeout=2)
     except Exception:
+        _signal_group(proc, signal.SIGKILL)
         try:
-            proc.kill()
+            proc.wait(timeout=2)
         except Exception:
             pass
 
@@ -157,6 +172,7 @@ def run_agent(
             text=True,
             env=env,
             cwd=code_dir or _scratch_cwd(),
+            start_new_session=True,  # own process group -> kill the whole tree
         )
     except FileNotFoundError:
         return MemberResult(
@@ -169,9 +185,12 @@ def run_agent(
             error=f"failed to spawn `{CONSULT_BIN}`: {e}",
         )
 
-    if registry is not None:
-        registry.add(proc)
     try:
+        # Register INSIDE the try: if a KeyboardInterrupt lands right after the
+        # spawn, the `except BaseException` below terminates the child so it is
+        # never orphaned (the pre-add window the audit's M1 worried about).
+        if registry is not None:
+            registry.add(proc)
         # +30s grace over the consult-internal timeout so the agent's own
         # timeout fires first and we don't double-kill prematurely.
         out, stderr_text = proc.communicate(timeout=timeout_seconds + 30)
@@ -189,9 +208,9 @@ def run_agent(
             return MemberResult(agent, role, False, "", wall, error="empty answer")
         return MemberResult(agent, role, True, answer, wall)
     except subprocess.TimeoutExpired:
-        # Kill, then drain the pipes so the child is reaped and no zombie /
-        # open-fd is left behind (terminate() alone does not reap).
-        proc.kill()
+        # Kill the WHOLE group (the advisor is a grandchild), then drain the pipes
+        # so the child is reaped and no zombie / open-fd is left behind.
+        _signal_group(proc, signal.SIGKILL)
         stderr_part = ""
         try:
             _, stderr_text = proc.communicate(timeout=5)
@@ -200,8 +219,13 @@ def run_agent(
             pass
         return MemberResult(
             agent, role, False, "", time.monotonic() - start,
-            error=f"timed out after {timeout_seconds}s{((': ' + stderr_part) if stderr_part else '')}",
+            error=f"timed out after {timeout_seconds}s + 30s grace{((': ' + stderr_part) if stderr_part else '')}",
         )
+    except BaseException:
+        # KeyboardInterrupt / cancellation mid-run: make sure the child and its
+        # whole process group die rather than lingering as paid orphans.
+        _terminate(proc)
+        raise
     finally:
         if registry is not None:
             registry.remove(proc)
