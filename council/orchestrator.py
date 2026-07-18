@@ -156,13 +156,16 @@ def build_question(code_block: str, user_question: str) -> str:
 
 
 # A citation line the advisor is told to emit: `SOURCE: <path>:<line> (function ...)`.
-# `_SOURCE_ANY` finds each SOURCE marker; `_CITE` then parses `path:line` from the
-# rest. The path is non-greedy so it tolerates spaces AND colons, and the line
-# number must be followed by whitespace, `(`, or end — so `:5` inside `/a:5/b.py:10`
-# does not win over the real `:10`. A SOURCE marker whose rest fails `_CITE` is a
-# MALFORMED citation: it is flagged BAD, never silently ignored.
-_SOURCE_ANY = re.compile(r"SOURCE:[ \t]*([^\n]*)")
-_CITE = re.compile(r"^(?P<path>.+?):(?P<line>\d+)(?=\s|\(|$)")
+# `_SOURCE_ANY` matches a SOURCE marker only at the START of a line (after optional
+# whitespace) so a `SOURCE:` appearing INSIDE prose or a suggested ```diff block
+# (e.g. `+LOG = "SOURCE: x"`) does not create a spurious malformed-citation and
+# wrongly fail a valid answer. `_CITE` then parses `path:line` from the rest. The
+# path is non-greedy so it tolerates spaces AND colons; the line number may carry a
+# trailing `:col`; and it must be followed by whitespace, `(`, or end — so `:5`
+# inside `/a:5/b.py:10` does not win over the real `:10`. A SOURCE marker whose rest
+# fails `_CITE` is a MALFORMED citation: flagged BAD, never silently ignored.
+_SOURCE_ANY = re.compile(r"(?m)^[ \t]*SOURCE:[ \t]*([^\n]*)")
+_CITE = re.compile(r"^(?P<path>.+?):(?P<line>\d+)(?::\d+)?(?=\s|\(|$)")
 
 
 def verify_sources(
@@ -243,6 +246,13 @@ def run_audit(
     if profile_name not in cfg.profiles:
         raise ConfigError(f"unknown profile {profile_name!r}; have {sorted(cfg.profiles)}")
     profile = cfg.profiles[profile_name]
+    # Enforce the SEMANTIC (cross-field) profile checks — a verify profile missing
+    # its drafter/reviewers, an explicit roster sharing a provider, a code synth
+    # that can't read code — BEFORE any paid member runs. cmd_check does this too,
+    # but the audit path must not skip it.
+    problems = profile.validate()
+    if problems:
+        raise ConfigError(f"invalid profile {profile_name!r}: " + "; ".join(problems))
     missing = [f for f in files if not os.path.exists(_norm(f))]
     if missing:
         raise ConfigError("file(s) to audit not found: " + ", ".join(missing))

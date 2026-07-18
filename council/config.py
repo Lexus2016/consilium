@@ -22,6 +22,17 @@ class ConfigError(Exception):
     a raw traceback."""
 
 
+def _require_int(name: str, value: Any, lo: int) -> int:
+    """A numeric config knob must be a JSON integer (not bool, float, or string)
+    and within range. Silently coercing a float/bool/string (int(1.9)->1,
+    int(True)->1, int("5")->5) would change behavior, so reject it loudly."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError(f"{name} must be an integer, got {type(value).__name__}")
+    if value < lo:
+        raise ConfigError(f"{name} must be >= {lo}, got {value}")
+    return value
+
+
 # Which provider each agent CLI talks to. Used to enforce cross-provider
 # diversity in a panel: two members on the SAME provider give fake independence,
 # which is exactly the failure mode that makes a council pointless.
@@ -76,7 +87,6 @@ class Profile:
     reviewers: list[str] = field(default_factory=list)  # verify recipe: adversarial critics
     member_timeout_seconds: int | None = None  # per-member override
     panel_size: int = 3               # POLICY: target number of independent answerers
-    min_panel: int = 1                # POLICY: below this, degrade toward single-agent
 
     def validate(self) -> list[str]:
         """Return a list of human-readable problems (empty = OK)."""
@@ -180,23 +190,47 @@ DEFAULT_PROFILES: dict[str, dict[str, Any]] = {
 def _profile_from_dict(name: str, d: dict[str, Any]) -> Profile:
     if not isinstance(d, dict):
         raise ConfigError(f"profile {name!r} must be a JSON object")
+    recipe = d.get("recipe", "parallel")
+    if recipe not in VALID_RECIPES:
+        raise ConfigError(f"profile {name!r}: unknown recipe {recipe!r} "
+                          f"(expected one of {sorted(VALID_RECIPES)})")
     panel = d.get("panel", [])
     reviewers = d.get("reviewers", [])
     # A bare string is iterable, so `list("claude")` would silently become
-    # ['c','l','a','u','d','e']. Reject it instead of building a nonsense roster.
-    if isinstance(panel, str) or isinstance(reviewers, str):
-        raise ConfigError(f"profile {name!r}: 'panel'/'reviewers' must be lists, not strings")
+    # ['c','l',...]; a dict would become a list of its keys. Require real lists.
+    if not isinstance(panel, list) or not isinstance(reviewers, list):
+        raise ConfigError(f"profile {name!r}: 'panel'/'reviewers' must be lists")
+    if not all(isinstance(x, str) for x in panel) or not all(isinstance(x, str) for x in reviewers):
+        raise ConfigError(f"profile {name!r}: 'panel'/'reviewers' entries must be agent-name strings")
+    # member_timeout_seconds flows all the way to subprocess.communicate(timeout=...)
+    # and panel_size reaches roster resolution; validate them now (a non-int would
+    # raise mid-run, a bad range would silently degrade) so the config fails cleanly
+    # before any paid process.
+    mts = d.get("member_timeout_seconds")
+    if mts is not None:
+        mts = _require_int(f"profile {name!r}: 'member_timeout_seconds'", mts, 0)
+    # synthesizer/drafter are used as agent names (a non-string would raise a raw
+    # TypeError at spawn); code_access must be a real bool (bool("false") is True,
+    # a silent footgun). Validate the remaining scalar fields strictly.
+    synthesizer = d.get("synthesizer", "")
+    if not isinstance(synthesizer, str):
+        raise ConfigError(f"profile {name!r}: 'synthesizer' must be a string")
+    drafter = d.get("drafter")
+    if drafter is not None and not isinstance(drafter, str):
+        raise ConfigError(f"profile {name!r}: 'drafter' must be a string")
+    code_access = d.get("code_access", False)
+    if not isinstance(code_access, bool):
+        raise ConfigError(f"profile {name!r}: 'code_access' must be true or false")
     return Profile(
         name=name,
-        recipe=d.get("recipe", "parallel"),
+        recipe=recipe,
         panel=list(panel),
-        synthesizer=d.get("synthesizer", ""),
-        code_access=bool(d.get("code_access", False)),
-        drafter=d.get("drafter"),
+        synthesizer=synthesizer,
+        code_access=code_access,
+        drafter=drafter,
         reviewers=list(reviewers),
-        member_timeout_seconds=d.get("member_timeout_seconds"),
-        panel_size=int(d.get("panel_size", 3)),
-        min_panel=int(d.get("min_panel", 1)),
+        member_timeout_seconds=mts,
+        panel_size=_require_int(f"profile {name!r}: 'panel_size'", d.get("panel_size", 3), 1),
     )
 
 
@@ -236,27 +270,43 @@ def load_config(path: str | None) -> Config:
     # An explicit {"profiles": {}} means "no profiles" (a mistake to surface), NOT
     # "use the defaults": distinguish a missing key from an empty value.
     profiles_raw = raw["profiles"] if "profiles" in raw else DEFAULT_PROFILES
+    if not isinstance(profiles_raw, dict):
+        raise ConfigError(f"'profiles' must be a JSON object, got {type(profiles_raw).__name__}")
     profiles = {name: _profile_from_dict(name, d) for name, d in profiles_raw.items()}
 
+    # A bare string/dict is iterable, so list("abc") would silently become
+    # ['a','b','c']; require a real list for strip_patterns.
+    strip_raw = raw.get("strip_patterns", [])
+    if not isinstance(strip_raw, list):
+        raise ConfigError(f"'strip_patterns' must be a list, got {type(strip_raw).__name__}")
+    working_dir = raw.get("working_dir", ".")
+    if not isinstance(working_dir, str):
+        raise ConfigError(f"'working_dir' must be a string, got {type(working_dir).__name__}")
+    host = raw.get("host", "127.0.0.1")
+    if not isinstance(host, str):
+        raise ConfigError(f"'host' must be a string, got {type(host).__name__}")
+
+    # Numeric knobs are strictly validated (int-only, in range) BEFORE any paid
+    # process so a float/bool/negative fails cleanly here, not mid-run.
     cfg = Config(
-        working_dir=raw.get("working_dir", "."),
-        host=raw.get("host", "127.0.0.1"),
-        port=int(raw.get("port", 11435)),
-        max_concurrent_panels=int(raw.get("max_concurrent_panels", 2)),
-        member_timeout_seconds=int(raw.get("member_timeout_seconds", 900)),
-        heartbeat_seconds=int(raw.get("heartbeat_seconds", 10)),
-        max_embedded_lines=int(raw.get("max_embedded_lines", 6000)),
-        max_synth_chars=int(raw.get("max_synth_chars", 6000)),
-        strip_patterns=list(raw.get("strip_patterns", [])),
+        working_dir=working_dir,
+        host=host,
+        port=_require_int("'port'", raw.get("port", 11435), 1),
+        max_concurrent_panels=_require_int("'max_concurrent_panels'", raw.get("max_concurrent_panels", 2), 1),
+        member_timeout_seconds=_require_int("'member_timeout_seconds'", raw.get("member_timeout_seconds", 900), 0),
+        heartbeat_seconds=_require_int("'heartbeat_seconds'", raw.get("heartbeat_seconds", 10), 0),
+        max_embedded_lines=_require_int("'max_embedded_lines'", raw.get("max_embedded_lines", 6000), 1),
+        max_synth_chars=_require_int("'max_synth_chars'", raw.get("max_synth_chars", 6000), 1),
+        strip_patterns=list(strip_raw),
         profiles=profiles,
     )
-    # Validate strip_patterns eagerly so a bad regex fails HERE (exit 2), not with a
-    # traceback after the panel has already run and been paid for.
+    # Validate strip_patterns eagerly so a bad regex (or non-string entry) fails
+    # HERE (exit 2), not with a traceback after the panel has run and been paid for.
     for p in cfg.strip_patterns:
         try:
             re.compile(p)
-        except re.error as e:
-            raise ConfigError(f"invalid strip_patterns regex {p!r}: {e}")
+        except (re.error, TypeError) as e:
+            raise ConfigError(f"invalid strip_patterns entry {p!r}: {e}")
     return cfg
 
 

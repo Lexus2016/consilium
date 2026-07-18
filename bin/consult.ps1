@@ -14,7 +14,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Version  = '0.6.1'
+$Version  = '0.7.0'
 $Prog     = 'consult'
 $Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex', 'grok', 'pi', 'cursor', 'kilo', 'cline', 'goose', 'kimi')
 $Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files. Reply with your written analysis as plain text — that written answer is the entire deliverable.'
@@ -206,6 +206,10 @@ while ($i -lt $n) {
 if ([string]::IsNullOrEmpty($question)) { Write-Err 'no question given'; Show-UsageErr; exit 2 }
 if ($contextFile -and -not (Test-Path -LiteralPath $contextFile -PathType Leaf))      { Write-Err "context file not found: $contextFile"; exit 2 }
 if ($codeDir     -and -not (Test-Path -LiteralPath $codeDir     -PathType Container)) { Write-Err "code dir not found: $codeDir"; exit 2 }
+# Refuse a flag-like --model value: it is forwarded as a token to the advisor CLI,
+# so a value beginning with '-' could inject an unintended (e.g. permission-
+# granting) flag. Real model names never start with '-'. (Parity with bin/consult.)
+if ($model -and $model.StartsWith('-')) { Write-Err "--model value must not begin with '-' (got '$model')"; exit 2 }
 
 # $panelAgents is the resolved, validated list for --panel mode; empty otherwise.
 $panelAgents = @()
@@ -479,9 +483,10 @@ switch ($agent) {
     'goose' {
         # Goose CLI (Block): `goose run -t` executes and exits; `-q` keeps stdout to
         # just the answer. Goose runs tools AUTONOMOUSLY by default (GOOSE_MODE=auto),
-        # so closed stdin does not gate writes — force GOOSE_MODE=approve (honours a
-        # user-set value). Reviewers agy+hermes flagged the autonomy.
-        if (-not $env:GOOSE_MODE) { $env:GOOSE_MODE = 'approve' }
+        # so closed stdin does not gate writes — force GOOSE_MODE=approve
+        # UNCONDITIONALLY (a preset GOOSE_MODE=auto is deliberately overridden; the
+        # tool's contract is read-only advice). Parity with bin/consult.
+        $env:GOOSE_MODE = 'approve'
         $cmdArgs += @('run', '-q')
         if ($model)   { $cmdArgs += @('--model', $model) }
         if ($doContinue) { $cmdArgs += '-r' }
@@ -608,6 +613,11 @@ if ($res.Code -eq 0 -and [string]::IsNullOrWhiteSpace($res.StdOut)) {
 
 if (-not $noLog) {
     New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+    # Transcripts hold the full prompt (question + --context + piped input); keep
+    # them owner-private (parity with bash umask 077/chmod). On Unix, pwsh would
+    # otherwise inherit the user's umask (possibly world-readable); on Windows,
+    # NTFS inherits the owner-restricted %USERPROFILE% ACL.
+    if (-not $IsWindows) { & chmod '700' $LogDir 2>$null }
     $ts      = Get-Date -Format 'yyyyMMdd-HHmmss'
     $logfile = Join-Path $LogDir "$ts-$agent-$PID.md"
     $fence   = '```'
@@ -627,6 +637,7 @@ if (-not $noLog) {
         [string]$res.StdOut
     )
     Set-Content -LiteralPath $logfile -Value $lines -Encoding UTF8
+    if (-not $IsWindows) { & chmod '600' $logfile 2>$null }
     [Console]::Error.WriteLine('')
     [Console]::Error.WriteLine("[consilium] transcript: $logfile")
 

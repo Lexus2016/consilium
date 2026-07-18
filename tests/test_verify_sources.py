@@ -82,6 +82,25 @@ class VerifierCore(unittest.TestCase):
         self.assertEqual(len(checks), 1)
         self.assertTrue(checks[0].ok, "a path containing spaces must still parse")
 
+    def test_file_line_col_citation_parses(self):
+        # Some advisors emit file:line:col; the trailing :col must not make the
+        # path read as "<file>:<line>" (which would falsely flag it BAD).
+        p = self._mk("a.py", 10)
+        checks = verify_sources(f"SOURCE: {p}:3:15 (function f)", {_norm(p)})
+        self.assertEqual(len(checks), 1)
+        self.assertTrue(checks[0].ok)
+        self.assertEqual(checks[0].line, 3)
+
+    def test_source_inside_diff_is_ignored(self):
+        # A `SOURCE:` appearing mid-line inside a suggested diff / quoted code must
+        # NOT create a spurious malformed citation and wrongly fail a valid answer;
+        # only a real line-anchored citation counts.
+        p = self._mk("a.py", 10)
+        ans = 'Finding.\n```diff\n+LOG_PREFIX = "SOURCE: x"\n```\nSOURCE: %s:3\n' % p
+        checks = verify_sources(ans, {_norm(p)})
+        self.assertEqual(len(checks), 1, "the in-diff SOURCE: must be ignored")
+        self.assertTrue(checks[0].ok)
+
     # --- H2: budget-omitted file is a guaranteed hallucination -------------
     def test_omitted_file_flagged_not_shown(self):
         shown = self._mk("shown.py", 10)

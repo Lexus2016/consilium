@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-VERSION="0.6.1"
+VERSION="0.7.0"
 PROG="consult"
 
 AGENTS="claude agy hermes opencode codex grok pi cursor kilo cline goose kimi"
@@ -157,6 +157,10 @@ if [ "${1:-}" = "council" ]; then
   _root="$(cd "$(dirname "$_t")/.." && pwd)"
   if ! command -v python3 >/dev/null 2>&1; then
     err "council mode needs python3 on PATH"; exit 127
+  fi
+  if [ ! -f "$_root/council/__main__.py" ]; then
+    err "council mode needs the consilium repo, but the 'council' package was not found next to consult ($_root/council). A --copy install cannot run council — symlink-install with ./install.sh, or run 'consult council' from the repo checkout."
+    exit 127
   fi
   exec env PYTHONPATH="$_root${PYTHONPATH:+:$PYTHONPATH}" \
            COUNCIL_CONFIG="${COUNCIL_CONFIG:-$_root/config/council.json}" \
@@ -317,11 +321,18 @@ if [ -n "$panel_agents" ]; then
       [ "$review" -eq 1 ]      && child+=(--review)
       [ "$no_log" -eq 1 ]      && child+=(--no-log)
       child+=(-- "$question")
-      # setsid (where present) makes this child its own process-group leader so the
-      # trap can kill the whole child tree (nested consult + advisor grandchild) as
-      # a unit; exec so $! is that leader. Stock macOS has no setsid -> exec directly
-      # (Ctrl-C still reaches the tree via the shared terminal group).
-      if command -v setsid >/dev/null 2>&1; then exec setsid "${child[@]}"; else exec "${child[@]}"; fi
+      # Make this child its own process-group leader so the trap can kill the whole
+      # child tree (nested consult + advisor grandchild) as a unit; exec so $! is
+      # that leader. Prefer setsid; fall back to a one-line perl setsid (stock macOS
+      # has no setsid but does have perl); last resort exec directly (Ctrl-C still
+      # reaches the tree via the shared terminal group).
+      if command -v setsid >/dev/null 2>&1; then
+        exec setsid "${child[@]}"
+      elif command -v perl >/dev/null 2>&1; then
+        exec perl -e 'use POSIX qw(setsid); setsid(); exec { $ARGV[0] } @ARGV; POSIX::_exit(127)' -- "${child[@]}"
+      else
+        exec "${child[@]}"
+      fi
     ) >"$out" 2>"$err" </dev/null &
     pids="$pids $!"
   done
@@ -568,8 +579,29 @@ if [ -n "${CONSILIUM_TIMEOUT:-}" ]; then
         runner=(timeout -k 10 "$CONSILIUM_TIMEOUT")
       elif command -v gtimeout >/dev/null 2>&1; then
         runner=(gtimeout -k 10 "$CONSILIUM_TIMEOUT")
+      elif command -v perl >/dev/null 2>&1; then
+        # Stock macOS has no GNU coreutils. A tiny perl runner gives the SAME
+        # bound: it setsid()s the advisor into its own process group, and on
+        # timeout SIGTERMs then (after a grace) SIGKILLs the WHOLE group, exiting
+        # 124 — so a hung or orphaned paid advisor cannot run forever. It also
+        # forwards INT/TERM to that group, so Ctrl-C and the panel trap still kill it.
+        runner=(perl -e 'use POSIX qw(setsid); use Errno qw(EINTR); my $t = shift @ARGV; my $ka = 10;
+exit(127) unless @ARGV;
+my $pid = fork(); exit(127) unless defined $pid;
+if ($pid == 0) { setsid(); exec { $ARGV[0] } @ARGV; POSIX::_exit(127); }
+my $s = 0; my $to = 0;
+$SIG{ALRM} = sub { if ($s == 0) { $s = 1; $to = 1; kill(q{TERM}, -$pid); alarm($ka); } else { kill(q{KILL}, -$pid); } };
+$SIG{TERM} = sub { kill(q{TERM}, -$pid); if ($s == 0) { $s = 1; alarm($ka); } };
+$SIG{INT}  = sub { kill(q{INT},  -$pid); if ($s == 0) { $s = 1; alarm($ka); } };
+alarm($t) if $t > 0;
+my $st = 0;
+while (1) { my $r = waitpid($pid, 0); if ($r == $pid) { $st = $?; last; } last if ($r == -1 && $! != EINTR); }
+alarm(0);
+exit(124) if $to;
+exit(128 + ($st & 127)) if ($st & 127);
+exit($st >> 8);' -- "$CONSILIUM_TIMEOUT")
       else
-        warn "CONSILIUM_TIMEOUT set but no 'timeout'/'gtimeout' found; running without it"
+        warn "CONSILIUM_TIMEOUT set but no 'timeout'/'gtimeout'/'perl' found; running without it"
       fi
       ;;
   esac

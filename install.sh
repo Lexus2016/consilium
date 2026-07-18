@@ -61,10 +61,21 @@ if [ -d "$dest" ] && [ ! -L "$dest" ]; then
   echo "install.sh: $dest is a directory; remove it or set CONSILIUM_BIN to another dir" >&2
   exit 1
 fi
-if [ -e "$dest" ] && [ ! -L "$dest" ] && ! grep -q "universal adapter for consilium" "$dest" 2>/dev/null; then
-  echo "install.sh: $dest exists and is not a consilium consult; refusing to overwrite." >&2
-  echo "  remove it yourself, or set CONSILIUM_BIN to a different bin directory." >&2
-  exit 1
+if [ -e "$dest" ] || [ -L "$dest" ]; then
+  # Replace $dest only if it IS a consilium consult: our own symlink (points at
+  # $src), a file/symlink-target carrying our header line, or a broken symlink
+  # (stale). Anything else — including a symlink to an UNRELATED tool — is refused
+  # so we never delete a user's other command.
+  _tgt=""; [ -L "$dest" ] && _tgt="$(readlink "$dest" 2>/dev/null || true)"
+  if [ "$_tgt" = "$src" ] || grep -q "universal adapter for consilium" "$dest" 2>/dev/null; then
+    :
+  elif [ -L "$dest" ] && [ ! -e "$dest" ]; then
+    :  # broken/dangling symlink — safe to replace
+  else
+    echo "install.sh: $dest exists and is not a consilium consult; refusing to overwrite." >&2
+    echo "  remove it yourself, or set CONSILIUM_BIN to a different bin directory." >&2
+    exit 1
+  fi
 fi
 rm -f "$dest" 2>/dev/null || true
 if [ "$mode" = "copy" ]; then
@@ -88,12 +99,17 @@ case ":$PATH:" in
 esac
 
 # ----- optional council (Python) availability --------------------------------
-if command -v python3 >/dev/null 2>&1; then
-  echo "council ok: \`consult council\` is available (python3 found)"
-else
+if ! command -v python3 >/dev/null 2>&1; then
   echo
   echo "note: \`consult council\` (multi-agent code audit) needs python3."
   echo "      Core \`consult\` works without it; install python3 to enable council."
+elif [ "$mode" = "copy" ]; then
+  echo
+  echo "note: \`consult council\` is NOT available with --copy — the Python \`council\`"
+  echo "      package is not copied alongside the script. Core \`consult\` works; for"
+  echo "      council, symlink-install (./install.sh) or run it from the repo checkout."
+else
+  echo "council ok: \`consult council\` is available (python3 + package via symlink)"
 fi
 
 # ----- optional: sync hub block + skill into installed agents ----------------
