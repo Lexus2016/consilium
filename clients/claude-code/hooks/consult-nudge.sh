@@ -21,9 +21,22 @@ fi
 # If neither jq nor python3 is available we cannot parse the hook input;
 # stay silent and non-blocking rather than emitting a malformed context.
 
+# Emit the PreToolUse JSON via whatever JSON tool exists. jq is NOT assumed:
+# with jq absent but python3 present the hook must still work. Both jq --arg
+# and python3 json.dumps escape the string correctly. Only reached when a
+# branch matched, which means the parse step above already found jq or python3.
+emit() {
+  local ctx="$1"
+  if command -v jq >/dev/null 2>&1; then
+    jq -nc --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$c}}'
+  elif command -v python3 >/dev/null 2>&1; then
+    ctx="$ctx" python3 -c 'import json,os; print(json.dumps({"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":os.environ["ctx"]}}))'
+  fi
+}
+
 # Branch 1: hard-to-reverse action.
 if printf '%s' "$cmd" | grep -qiE 'git (push|merge|rebase)|alembic (upgrade|downgrade)|flyway (migrate|clean)|prisma migrate|db:migrate|artisan migrate|terraform apply|kubectl apply'; then
-  jq -nc '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"This step is hard to reverse. If you have NOT already gotten an independent second opinion on the underlying decision, run `consult <agent>` with a tight question (pick a DIFFERENT provider; `consult --list` for the roster), or a `--panel` cross-check, BEFORE proceeding. Skip only if this is routine, trivially reversible, or already reviewed."}}'
+  emit 'This step is hard to reverse. If you have NOT already gotten an independent second opinion on the underlying decision, run `consult <agent>` with a tight question (pick a DIFFERENT provider; `consult --list` for the roster), or a `--panel` cross-check, BEFORE proceeding. Skip only if this is routine, trivially reversible, or already reviewed.'
   exit 0
 fi
 
@@ -32,7 +45,7 @@ fi
 if printf '%s' "$cmd" | grep -qiE 'git commit'; then
   staged=$(git diff --cached --name-only 2>/dev/null || true)
   if printf '%s' "$staged" | grep -qiE '\.(py|ts|tsx|js|jsx|mjs|cjs|go|rs|rb|java|kt|swift|c|h|cc|cpp|hpp|cs|php|scala|sh|bash|zsh|sql)$'; then
-    jq -nc '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:"You are about to commit CODE. If this is a substantial change and you have NOT verified it against what was asked, pipe the diff to `consult --panel <a,b> --review` with a one-line Task statement (advisors return VERDICT: PASS/FAIL plus the mismatches) BEFORE sealing it. Skip for trivial or obvious changes."}}'
+    emit 'You are about to commit CODE. If this is a substantial change and you have NOT verified it against what was asked, pipe the diff to `consult --panel <a,b> --review` with a one-line Task statement (advisors return VERDICT: PASS/FAIL plus the mismatches) BEFORE sealing it. Skip for trivial or obvious changes.'
   fi
   exit 0
 fi
