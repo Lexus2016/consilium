@@ -18,7 +18,7 @@ import re
 import sys
 from dataclasses import dataclass
 
-from .config import load_config
+from .config import load_config, ConfigError
 from .spawn import ProcessRegistry
 from .recipes import run_recipe, _run_member
 from .roster import list_available_agents, resolve_roster
@@ -241,8 +241,11 @@ def run_audit(
     """
     cfg = load_config(config_path)
     if profile_name not in cfg.profiles:
-        raise SystemExit(f"unknown profile {profile_name!r}; have {sorted(cfg.profiles)}")
+        raise ConfigError(f"unknown profile {profile_name!r}; have {sorted(cfg.profiles)}")
     profile = cfg.profiles[profile_name]
+    missing = [f for f in files if not os.path.exists(_norm(f))]
+    if missing:
+        raise ConfigError("file(s) to audit not found: " + ", ".join(missing))
     abs_files = {_norm(f) for f in files}
 
     code_block, embedded_files = gather_code(files, max_lines=cfg.max_embedded_lines)

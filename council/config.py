@@ -10,8 +10,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import sys
 from dataclasses import dataclass, field
 from typing import Any
+
+
+class ConfigError(Exception):
+    """A user-facing configuration or usage error. cli.main maps it to exit 2 so
+    it is distinguishable from an INCOMPLETE audit (exit 1) and never surfaces as
+    a raw traceback."""
 
 
 # Which provider each agent CLI talks to. Used to enforce cross-provider
@@ -170,32 +178,64 @@ DEFAULT_PROFILES: dict[str, dict[str, Any]] = {
 
 
 def _profile_from_dict(name: str, d: dict[str, Any]) -> Profile:
+    if not isinstance(d, dict):
+        raise ConfigError(f"profile {name!r} must be a JSON object")
+    panel = d.get("panel", [])
+    reviewers = d.get("reviewers", [])
+    # A bare string is iterable, so `list("claude")` would silently become
+    # ['c','l','a','u','d','e']. Reject it instead of building a nonsense roster.
+    if isinstance(panel, str) or isinstance(reviewers, str):
+        raise ConfigError(f"profile {name!r}: 'panel'/'reviewers' must be lists, not strings")
     return Profile(
         name=name,
         recipe=d.get("recipe", "parallel"),
-        panel=list(d.get("panel", [])),
+        panel=list(panel),
         synthesizer=d.get("synthesizer", ""),
         code_access=bool(d.get("code_access", False)),
         drafter=d.get("drafter"),
-        reviewers=list(d.get("reviewers", [])),
+        reviewers=list(reviewers),
         member_timeout_seconds=d.get("member_timeout_seconds"),
         panel_size=int(d.get("panel_size", 3)),
         min_panel=int(d.get("min_panel", 1)),
     )
 
 
+def _default_config_path() -> str:
+    """The config shipped with the repo, resolved relative to THIS package rather
+    than the caller's CWD — so `python3 -m council` works from any directory."""
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(repo_root, "config", "council.json")
+
+
 def load_config(path: str | None) -> Config:
     """Load config from JSON, falling back to built-in defaults.
 
-    Explicit fields in the file override defaults; if no 'profiles' key is given,
-    the three built-in profiles are used so the council works out of the box.
+    An EXPLICITLY-passed path (``--config`` / ``$COUNCIL_CONFIG`` / ``$QUORUM_CONFIG``)
+    that does not exist is a hard error — a typo must fail loudly, not silently use
+    defaults. A missing DEFAULT config warns and uses the built-in profiles so the
+    council still works out of the box.
     """
-    raw: dict[str, Any] = {}
-    if path and os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
+    env_path = os.environ.get("COUNCIL_CONFIG") or os.environ.get("QUORUM_CONFIG")
+    explicit = path is not None or env_path is not None
+    resolved = path or env_path or _default_config_path()
 
-    profiles_raw = raw.get("profiles") or DEFAULT_PROFILES
+    raw: dict[str, Any] = {}
+    if os.path.exists(resolved):
+        try:
+            with open(resolved, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            raise ConfigError(f"cannot read config {resolved}: {e}")
+        if not isinstance(raw, dict):
+            raise ConfigError(f"config {resolved} must be a JSON object")
+    elif explicit:
+        raise ConfigError(f"config file not found: {resolved}")
+    else:
+        print(f"[council] no config at {resolved}; using built-in defaults", file=sys.stderr)
+
+    # An explicit {"profiles": {}} means "no profiles" (a mistake to surface), NOT
+    # "use the defaults": distinguish a missing key from an empty value.
+    profiles_raw = raw["profiles"] if "profiles" in raw else DEFAULT_PROFILES
     profiles = {name: _profile_from_dict(name, d) for name, d in profiles_raw.items()}
 
     cfg = Config(
@@ -210,6 +250,13 @@ def load_config(path: str | None) -> Config:
         strip_patterns=list(raw.get("strip_patterns", [])),
         profiles=profiles,
     )
+    # Validate strip_patterns eagerly so a bad regex fails HERE (exit 2), not with a
+    # traceback after the panel has already run and been paid for.
+    for p in cfg.strip_patterns:
+        try:
+            re.compile(p)
+        except re.error as e:
+            raise ConfigError(f"invalid strip_patterns regex {p!r}: {e}")
     return cfg
 
 

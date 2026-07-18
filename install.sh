@@ -54,6 +54,18 @@ fi
 mkdir -p "$bin_dir"
 chmod +x "$src"
 
+# Don't clobber a directory or an unrelated `consult` binary sitting at $dest. A
+# prior consilium install (our symlink, or a copy carrying our header line) is
+# fine to replace; anything else is refused so we never delete a user's own tool.
+if [ -d "$dest" ] && [ ! -L "$dest" ]; then
+  echo "install.sh: $dest is a directory; remove it or set CONSILIUM_BIN to another dir" >&2
+  exit 1
+fi
+if [ -e "$dest" ] && [ ! -L "$dest" ] && ! grep -q "universal adapter for consilium" "$dest" 2>/dev/null; then
+  echo "install.sh: $dest exists and is not a consilium consult; refusing to overwrite." >&2
+  echo "  remove it yourself, or set CONSILIUM_BIN to a different bin directory." >&2
+  exit 1
+fi
 rm -f "$dest" 2>/dev/null || true
 if [ "$mode" = "copy" ]; then
   cp "$src" "$dest"
@@ -112,6 +124,14 @@ if [ "$do_clients" -eq 1 ]; then
     # two START + one END) would still take the awk branch, whose state machine
     # then deletes everything after the second START to EOF — silent data loss.
     if [ "${has_start:-0}" -eq 1 ] && [ "${has_end:-0}" -eq 1 ]; then
+      # Markers balanced, but also require START to precede END: a reversed pair
+      # (END above START) would make the awk state machine delete START..EOF.
+      start_ln=$(grep -n "consilium:consult-peer START" "$target" | head -1 | cut -d: -f1)
+      end_ln=$(grep -n "consilium:consult-peer END" "$target" | head -1 | cut -d: -f1)
+      if [ "${start_ln:-0}" -ge "${end_ln:-0}" ]; then
+        echo "  WARN: consult-peer markers are out of order (END before START) in $target — fix manually; skipping" >&2
+        return
+      fi
       awk '/consilium:consult-peer START/{s=1} s==0{print} /consilium:consult-peer END/{s=0; next}' "$target" > "$tmp"
       printf '\n' >> "$tmp"
       cat "$block_file" >> "$tmp"
@@ -121,7 +141,7 @@ if [ "$do_clients" -eq 1 ]; then
       echo "  updated block: $target"
     elif [ "${has_start:-0}" -ge 1 ] || [ "${has_end:-0}" -ge 1 ]; then
       echo "  WARN: unbalanced or duplicate consult-peer markers in $target — fix manually; skipping" >&2
-    elif grep -q "Consulting a peer AI (consilium)" "$target"; then
+    elif grep -qE "Consulting (a peer AI|peer AIs) \(consilium\)" "$target"; then
       # Legacy block pasted before markers existed: don't silently duplicate it.
       echo "  WARN: $target has an unmarked legacy block — remove it by hand, then re-run; skipping" >&2
     else

@@ -8,10 +8,10 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
-import os
 import re
+import sys
 
-from .config import load_config, validate_config
+from .config import load_config, validate_config, ConfigError
 
 # The tool's authoritative verdict line. A synthesizer/advisor must not be able
 # to forge it inside its own answer, so any such line — even indented — in the
@@ -21,13 +21,12 @@ _CONTROL_LINE_RE = re.compile(r"(?m)^([ \t]*)(COUNCIL STATUS:)")
 
 
 def _add_common(p: argparse.ArgumentParser):
-    default_cfg = (
-        os.environ.get("COUNCIL_CONFIG")
-        or os.environ.get("QUORUM_CONFIG")  # back-compat
-        or "config/council.json"
-    )
-    p.add_argument("--config", "-c", default=default_cfg,
-                   help="path to JSON config (default: config/council.json)")
+    # default=None (not the path string) so load_config can tell an EXPLICIT
+    # --config from the built-in default: a typo'd explicit path fails loudly,
+    # a missing default just warns and uses built-in profiles.
+    p.add_argument("--config", "-c", default=None,
+                   help="path to JSON config (default: the repo's config/council.json, "
+                        "or $COUNCIL_CONFIG)")
 
 
 def cmd_check(args) -> int:
@@ -145,7 +144,13 @@ def main(argv=None) -> int:
     a.set_defaults(func=cmd_audit)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except ConfigError as e:
+        # A user/config error (bad path, malformed JSON, bad regex, unknown
+        # profile): one clean line and exit 2 — distinct from INCOMPLETE (exit 1).
+        print(f"council: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
