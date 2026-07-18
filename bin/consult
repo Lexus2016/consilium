@@ -15,7 +15,7 @@ VERSION="0.6.1"
 PROG="consult"
 
 AGENTS="claude agy hermes opencode codex grok pi cursor kilo cline goose kimi"
-PREAMBLE="You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files."
+PREAMBLE="You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files. Reply with your written analysis as plain text — that written answer is the entire deliverable."
 # Used by --review. Deliberately adversarial: a reviewer told to 'assess quality'
 # rubber-stamps; a reviewer told to 'find where the RESULT fails the TASK' catches
 # real defects. The PASS/FAIL verdict makes the answer actionable for the hub.
@@ -71,6 +71,9 @@ env:
   CONSILIUM_TIMEOUT   per-call timeout, if 'timeout'/'gtimeout' is available
   CONSILIUM_MAX_DEPTH consultation-chain depth limit (default: 3)
   CONSILIUM_LOG_KEEP  keep only the newest N transcripts (default: 200; 0 = all)
+  CONSILIUM_RETRY_EMPTY  retry an advisor that exits 0 with a blank answer, up to
+                     N times (default: 1; 0 = never). agy/grok are agentic CLIs
+                     whose headless turn occasionally ends with no text.
 
 examples:
   $PROG codex -- "Is a read-only sandbox enough to make a consultant safe?"
@@ -364,6 +367,26 @@ $stdin_content"
 $question"
 fi
 
+# Agentic advisors (agy, grok) run a tool/exploration loop in headless mode and can
+# end their turn with NO text (exit 0, empty stdout): agy's read-only `command` tool
+# is auto-denied by the closed stdin — it then returns nothing — and grok wanders
+# into file/web exploration. When NO working dir is attached, nudge just these two to
+# answer from the given context as text. Skipped when --code IS given (the caller
+# WANTS exploration — telling them not to explore would contradict --add-dir) and for
+# --raw (the caller wants the question verbatim).
+if [ "$raw" -eq 0 ] && [ -z "$code_dir" ]; then
+  case "$agent" in
+    agy|grok)
+      prompt="$prompt
+
+(Headless-mode note: reply with your written analysis as plain text, based on the
+context and any working directory provided to you. Do NOT try to run shell commands
+to explore — in this non-interactive session those tool calls are auto-denied and
+you would return an empty answer instead of an analysis.)"
+      ;;
+  esac
+fi
+
 # ----- build the agent command ----------------------------------------------
 
 cmd=("$(agent_bin "$agent")")
@@ -395,7 +418,15 @@ case "$agent" in
     cmd+=("--gemini_dir=$_agy_clean")
     [ "$do_continue" -eq 1 ] && cmd+=(-c)
     [ -n "$model" ] && cmd+=(--model "$model")
-    [ -n "$code_dir" ] && cmd+=(--add-dir "$code_dir")
+    # agy's file-exploration tools are auto-denied in headless mode (closed stdin
+    # can't grant the permission), so a question that needs it often returns NOTHING
+    # (measured: --code exploration questions came back empty 3/3, both retries too).
+    # We still pass --add-dir (it sometimes answers from the workspace), but warn:
+    # for agy, embed the slice via --context / a pipe, or use claude/codex for --code.
+    if [ -n "$code_dir" ]; then
+      warn "agy: --code exploration is unreliable headless (its file tools are auto-denied; it often returns nothing) — prefer --context or a pipe, or use claude/codex for --code reviews"
+      cmd+=(--add-dir "$code_dir")
+    fi
     cmd+=(-p "$prompt")
     ;;
   hermes)
@@ -524,40 +555,69 @@ if [ -n "${CONSILIUM_TIMEOUT:-}" ]; then
   esac
 fi
 
-# ----- run, print, and log ---------------------------------------------------
+# ----- run, retry-on-empty, print, and log -----------------------------------
 # The advisor is spawned as a child process, so it inherits THIS working
 # directory. That is deliberate: it shares our cwd-scoped context — tqmemory keys
 # memory by cwd, and project AGENTS.md/GEMINI.md/CLAUDE.md resolve from here.
+#
+# Agentic advisors (notably agy and grok) intermittently end their headless turn
+# without emitting any text — exit 0, empty stdout — when a tool call is auto-denied
+# (closed stdin) or the exploration loop wanders off. Retry on EXACTLY that
+# signature (clean exit + whitespace-only answer); never retry a real error or a
+# timeout (status != 0), which would just fail again. CONSILIUM_RETRY_EMPTY tunes
+# it (default 1; 0 disables).
+retries="${CONSILIUM_RETRY_EMPTY:-1}"
+case "$retries" in *[!0-9]*|"") retries=1 ;; esac
 
+# true when FILE holds no non-whitespace byte (the empty-answer signature).
+answer_is_blank() { ! LC_ALL=C grep -q '[^[:space:]]' "$1" 2>/dev/null; }
+
+tmp="$(mktemp "${TMPDIR:-/tmp}/consilium.XXXXXX")"
 status=0
+tee_status=0
+attempt=0
+while : ; do
+  : > "$tmp"
+  # Snapshot PIPESTATUS in one step right after the pipe: any later command resets
+  # it, and reading [1] afterwards would be an unbound-variable abort under set -u.
+  set +e
+  "${runner[@]+"${runner[@]}"}" "${cmd[@]}" </dev/null | tee "$tmp"
+  pipe_status=("${PIPESTATUS[@]}")
+  set -e
+  status=${pipe_status[0]}
+  tee_status=${pipe_status[1]:-0}
+  if [ "$status" -eq 0 ] && answer_is_blank "$tmp" && [ "$attempt" -lt "$retries" ]; then
+    attempt=$((attempt + 1))
+    warn "advisor '$agent' exited 0 with an empty answer; retrying ($attempt/$retries)…"
+    continue
+  fi
+  break
+done
+
+# tee can fail (disk full, no write perm) while the advisor itself succeeded.
+if [ "$tee_status" -ne 0 ]; then
+  warn "could not capture the answer (tee exit $tee_status); a transcript may be truncated"
+fi
+# Still blank after exhausting retries: surface it AND fail (exit 4) so an empty
+# reply is not mistaken for a real (short) answer — a bare exit 0 would let a caller,
+# or a --panel parent, treat "no answer" as success.
+if [ "$status" -eq 0 ] && answer_is_blank "$tmp"; then
+  warn "advisor '$agent' returned no answer after $((attempt + 1)) attempt(s) — agy/grok are agentic CLIs whose headless turn can end without text; retry, raise CONSILIUM_TIMEOUT, or use a non-agentic advisor (claude/codex/hermes)"
+  status=4
+fi
 
 if [ "$no_log" -eq 1 ]; then
-  "${runner[@]+"${runner[@]}"}" "${cmd[@]}" </dev/null || status=$?
+  rm -f "$tmp"
   exit "$status"
 fi
 
 mkdir -p "$LOG_DIR"
 ts="$(date +%Y%m%d-%H%M%S)"
 logfile="$LOG_DIR/${ts}-${agent}-$$.md"
-tmp="$(mktemp "${TMPDIR:-/tmp}/consilium.XXXXXX")"
-
-set +e
-"${runner[@]+"${runner[@]}"}" "${cmd[@]}" </dev/null | tee "$tmp"
-# Snapshot the WHOLE array in one step: any later command (even `set -e` or the
-# `status=` assignment) resets PIPESTATUS, so reading [1] afterwards would be an
-# unbound-variable abort under `set -u`.
-pipe_status=("${PIPESTATUS[@]}")
-set -e
-status=${pipe_status[0]}
-tee_status=${pipe_status[1]:-0}
-# tee can fail (disk full, no write perm) while the advisor itself succeeded.
-# Surface that so a silently-truncated transcript isn't mistaken for a good one.
-if [ "$tee_status" -ne 0 ]; then
-  warn "could not capture transcript (tee exit $tee_status); the answer above was not saved"
-fi
 
 {
   printf '# consilium consult — %s — %s\n\n' "$agent" "$ts"
+  [ "$attempt" -gt 0 ] && printf '> note: the advisor returned an empty answer on %s earlier attempt(s) before this one.\n\n' "$attempt"
   printf '## Prompt\n\n```\n%s\n```\n\n' "$prompt"
   printf '## Answer\n\n'
   cat "$tmp"

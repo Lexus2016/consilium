@@ -83,6 +83,7 @@ env:
   CONSILIUM_TIMEOUT   per-call timeout if `timeout`/`gtimeout` present
   CONSILIUM_MAX_DEPTH consultation-chain depth limit (default 3; loop guard)
   CONSILIUM_LOG_KEEP  keep only the newest N transcripts (default 200; 0 = all)
+  CONSILIUM_RETRY_EMPTY  retry an advisor that exits 0 with a blank answer (default 1; 0 = off)
 ```
 
 **Panel** (`--panel a,b,c`) is a thin orchestration layer, not a new transport:
@@ -194,6 +195,34 @@ always-approve and offers no such gate.
 To stop runaway `A -> B -> A` consultation loops, each call increments
 `CONSILIUM_CALL_DEPTH` in the advisor's environment and aborts (exit 3) once it
 reaches `CONSILIUM_MAX_DEPTH` (default 3).
+
+**Empty answers from agentic advisors (agy, grok).** Both are agentic CLIs whose
+headless turn can end WITHOUT emitting any text — exit 0, empty stdout. Two
+mechanisms: agy's read-only `command` tool needs a permission the closed stdin
+can't grant, so it is auto-denied and agy returns nothing; grok wanders into a
+file/web exploration loop that finishes without a final message. It is
+intermittent (agy `--code` was measured at 203s / 0 bytes on one run, ~11s / 450
+bytes on the next). Two mitigations, applied together:
+
+1. **A per-agent prompt nudge** appended only for `agy`/`grok` when NO working dir
+   is attached (with `--code` the caller wants exploration, so the nudge would
+   contradict it): answer from the provided context as text; do not run shell
+   commands. This cuts drift and latency (grok went from ~900 B of exploration
+   narration to a 120 B direct answer in testing).
+2. **Retry-on-empty**: if any advisor exits 0 with a whitespace-only answer,
+   `consult` retries up to `CONSILIUM_RETRY_EMPTY` times (default 1). It fires only
+   on that exact signature — a non-zero exit or a timeout is never retried (it would
+   just fail again) — so real errors are surfaced, not masked. The retry is noted in
+   the transcript. If the answer is STILL blank after retries, `consult` exits **4**
+   (not 0), so a caller — or a `--panel` parent — treats "no answer" as a failed
+   member instead of a silent success.
+
+`agy --code` specifically stays unreliable: agy's file-exploration tools need a
+permission the closed stdin can't grant, so an exploration question was measured
+empty 3/3 (both retries too). `consult` still passes `--add-dir` (it sometimes
+answers from the workspace) but **warns**; for agy, embed the slice via `--context`
+/ a pipe, or use claude/codex for `--code`. For heavy `--code`/`--review` work also
+raise `CONSILIUM_TIMEOUT` (≥300).
 
 ## Decisions log
 

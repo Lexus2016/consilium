@@ -155,6 +155,18 @@ can revisit the reasoning later.
   is another process, possibly another provider, and the prompt is passed as a
   command-line argument (visible in process listings on multi-user hosts).
 
+## `agy` and `grok` are agentic (occasionally slow / empty)
+
+Both run an internal tool/exploration loop in headless mode, so they are slower
+(often 15–60 s, sometimes minutes) and can occasionally end a turn with **no
+answer at all** (exit 0, empty output) — agy's read-only `command` tool is
+auto-denied by the closed stdin, and grok wanders off exploring. `consult` handles
+this for you: it nudges these two to answer from the provided context as text, and
+**retries once** on a blank answer (`CONSILIUM_RETRY_EMPTY`, default 1). Still, for
+heavy `--code`/`--review` work prefer embedding the slice via `--context` / a pipe,
+raise `CONSILIUM_TIMEOUT` (≥300), or reach for a non-agentic advisor
+(`claude`/`codex`/`hermes`) when you need a guaranteed, fast reply.
+
 ## Hub instruction block
 
 This is the compact block to drop into a client's instruction file (`AGENTS.md`,

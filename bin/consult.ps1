@@ -17,7 +17,7 @@ $ErrorActionPreference = 'Stop'
 $Version  = '0.6.1'
 $Prog     = 'consult'
 $Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex', 'grok', 'pi', 'cursor', 'kilo', 'cline', 'goose', 'kimi')
-$Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files.'
+$Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files. Reply with your written analysis as plain text — that written answer is the entire deliverable.'
 # Used by --review. Deliberately adversarial: a reviewer told to 'assess quality'
 # rubber-stamps; one told to 'find where the RESULT fails the TASK' catches real
 # defects. The PASS/FAIL verdict makes the answer actionable for the hub.
@@ -74,6 +74,9 @@ env:
   CONSILIUM_TIMEOUT   per-call timeout in seconds (0 or unset = no timeout)
   CONSILIUM_MAX_DEPTH consultation-chain depth limit (default: 3)
   CONSILIUM_LOG_KEEP  keep only the newest N transcripts (default: 200; 0 = all)
+  CONSILIUM_RETRY_EMPTY  retry an advisor that exits 0 with a blank answer, up to
+                     N times (default: 1; 0 = never). agy/grok are agentic CLIs
+                     whose headless turn occasionally ends with no text.
 
 examples:
   $Prog codex -- "Is a read-only sandbox enough to make a consultant safe?"
@@ -344,6 +347,15 @@ if ($raw) {
     $prompt = "$prompt`n`n## Question`n`n$question"
 }
 
+# Agentic advisors (agy, grok) can end their headless turn with NO text (exit 0,
+# empty stdout): agy's read-only `command` tool is auto-denied by the closed stdin,
+# and grok wanders into file/web exploration. When NO working dir is attached, nudge
+# just these two to answer from the given context as text. Skipped when --code IS
+# given (the caller wants exploration) and for --raw (verbatim question).
+if (-not $raw -and -not $codeDir -and ($agent -eq 'agy' -or $agent -eq 'grok')) {
+    $prompt = "$prompt`n`n(Headless-mode note: reply with your written analysis as plain text, based on the context and any working directory provided to you. Do NOT try to run shell commands to explore — in this non-interactive session those tool calls are auto-denied and you would return an empty answer instead of an analysis.)"
+}
+
 # ----- build the agent argument list ----------------------------------------
 
 $cmdArgs = @()
@@ -381,7 +393,13 @@ switch ($agent) {
         $cmdArgs += @('--gemini_dir', $agyClean)
         if ($doContinue) { $cmdArgs += '-c' }
         if ($model)   { $cmdArgs += @('--model', $model) }
-        if ($codeDir) { $cmdArgs += @('--add-dir', $codeDir) }
+        # agy's file-exploration tools are auto-denied in headless mode (closed stdin
+        # can't grant the permission), so a --code question that needs it often returns
+        # NOTHING. Still pass --add-dir (it sometimes answers from the workspace) but warn.
+        if ($codeDir) {
+            Write-WarnMsg 'agy: --code exploration is unreliable headless (its file tools are auto-denied; it often returns nothing) — prefer --context or a pipe, or use claude/codex for --code reviews'
+            $cmdArgs += @('--add-dir', $codeDir)
+        }
         $cmdArgs += @('-p', $prompt)
     }
     'hermes' {
@@ -556,11 +574,35 @@ function Invoke-Agent {
     }
 }
 
-$res = Invoke-Agent -AgentName (Get-AgentBinary $agent) -ArgList $cmdArgs -TimeoutSec $timeoutSec
+# ----- run the agent, retry once on an empty answer --------------------------
+# Agentic advisors (notably agy and grok) intermittently end their headless turn
+# without text — exit 0, empty stdout — when a tool call is auto-denied (closed
+# stdin) or the exploration loop wanders off. Retry on EXACTLY that signature
+# (clean exit + whitespace-only answer); never retry a real error or a timeout,
+# which would just fail again. CONSILIUM_RETRY_EMPTY tunes it (default 1; 0 off).
+$retries = 1
+if ($env:CONSILIUM_RETRY_EMPTY) { $parsedR = 0; if ([int]::TryParse($env:CONSILIUM_RETRY_EMPTY, [ref]$parsedR)) { $retries = $parsedR } }
+$attempt = 0
+while ($true) {
+    $res = Invoke-Agent -AgentName (Get-AgentBinary $agent) -ArgList $cmdArgs -TimeoutSec $timeoutSec
+    if ($res.Code -eq 0 -and [string]::IsNullOrWhiteSpace($res.StdOut) -and $attempt -lt $retries) {
+        $attempt++
+        Write-WarnMsg "advisor '$agent' exited 0 with an empty answer; retrying ($attempt/$retries)…"
+        continue
+    }
+    break
+}
 
 if ($res.StdOut) { [Console]::Out.Write($res.StdOut) }
 if ($res.StdErr) { [Console]::Error.Write($res.StdErr) }
 if ($res.TimedOut) { Write-WarnMsg "timed out after ${timeoutSec}s" }
+# Still blank after retries: surface it AND fail (exit 4) so an empty reply is not
+# mistaken for success by a caller or a --panel parent.
+$exitCode = $res.Code
+if ($res.Code -eq 0 -and [string]::IsNullOrWhiteSpace($res.StdOut)) {
+    Write-WarnMsg "advisor '$agent' returned no answer after $($attempt + 1) attempt(s) — agy/grok are agentic CLIs whose headless turn can end without text; retry, raise CONSILIUM_TIMEOUT, or use a non-agentic advisor (claude/codex/hermes)"
+    $exitCode = 4
+}
 
 # ----- transcript ------------------------------------------------------------
 
@@ -569,9 +611,11 @@ if (-not $noLog) {
     $ts      = Get-Date -Format 'yyyyMMdd-HHmmss'
     $logfile = Join-Path $LogDir "$ts-$agent-$PID.md"
     $fence   = '```'
+    $retryNote = if ($attempt -gt 0) { @("> note: the advisor returned an empty answer on $attempt earlier attempt(s) before this one.", '') } else { @() }
     $lines   = @(
         "# consilium consult — $agent — $ts",
-        '',
+        ''
+    ) + $retryNote + @(
         '## Prompt',
         '',
         $fence,
@@ -596,4 +640,4 @@ if (-not $noLog) {
     }
 }
 
-exit $res.Code
+exit $exitCode
