@@ -87,9 +87,12 @@ fixes. Needs `python3` (the core `consult` stays a zero-dependency shell tool).
 
 ## Safety
 
-The advisor is meant to advise, not act: codex runs hard-sandboxed under
-`--sandbox read-only`, while the others answer without editing unless you grant
-permission, and consilium never passes them permission-skipping flags. Strip
+The advisor is meant to advise, not act, but how firmly that is enforced varies:
+`codex` runs hard-sandboxed under `--sandbox read-only`; `cline`/`goose` are forced
+into an approval gate (`--auto-approve false`, `GOOSE_MODE=approve`) the closed stdin
+denies; `claude`/`kimi`/`kilo`/`cursor` fall back to your own permission config; `pi`
+has no gate at all (the preamble only). consilium's own flags never grant permissions,
+but `--raw`/`--model` pass caller-supplied tokens through. Strip
 secrets from any context file or piped input before passing it — the advisor is
 another process, often another provider. Bound a call with `CONSILIUM_TIMEOUT`.
 

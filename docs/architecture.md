@@ -12,14 +12,17 @@ each agent can be hub or advisor.
 Goal: any user can install it into any of the supported clients and immediately
 start consulting the others.
 
-## The agents (verified locally)
+## The agents (the original four, verified locally)
+
+This table covers only the four agents consilium launched with. The full roster is
+twelve — see the **Dispatch table** below for the exact command built for each.
 
 | Agent | Headless call | Continue session | Plugins |
 |---|---|---|---|
 | `claude` (Claude Code) | `claude -p "Q"` | `claude -c -p` | skills |
 | `agy` (Antigravity) | `agy -p "Q"` | `agy -c -p` / `--conversation ID` | `agy plugin` |
 | `opencode` | `opencode run "Q"` | `opencode run -c` / `-s ID` | `opencode plugin`, MCP, ACP |
-| `codex` (OpenAI) | `codex exec "Q"` | `codex resume --last` | `codex plugin`, can be MCP server |
+| `codex` (OpenAI) | `codex exec "Q"` | not supported (dispatch runs `exec` and ignores `--continue`) | `codex plugin`, can be MCP server |
 
 Shared extras: `--add-dir` / `-C` (give a working dir as context), `-m`/`--model`,
 sandbox / approval controls (codex: `--sandbox read-only -a never`).
@@ -103,15 +106,15 @@ duplicates collapsed.
 | agent | command built |
 |---|---|
 | claude | `claude -p [-c] [--model M] [--add-dir DIR] "<prompt>"` |
-| agy | `agy -p [-c] [--add-dir DIR] "<prompt>"` |
+| agy | `agy --gemini_dir=<clean> [-c] [--model M] [--add-dir DIR] -p "<prompt>"` (flags precede `-p`; `--gemini_dir` always passed) |
 | hermes | `hermes chat [--model M] [-c] -q "<prompt>"` (no `--add-dir`) |
 | opencode | `opencode run [-c] [-m M] "<prompt>"` |
 | codex | `codex exec --sandbox read-only [-m M] [-C DIR] "<prompt>"` |
 | grok | `grok [-m M] [-c] [--cwd DIR] -p "<prompt>"` (`-p`/`--single` takes the prompt) |
-| pi | `pi -p [--model M] [-c] "<prompt>"` (no `--code`) |
+| pi | `pi [--model M] [-c] -p "<prompt>"` (no `--code`; `-p` takes the prompt last) |
 | cursor | `cursor-agent -p --output-format text [--model M] [--resume] "<prompt>"` (binary may be `agent`; no `--code`) |
 | kilo | `kilo run [-m M] [-c] [--dir DIR] "<prompt>"` (no `--auto`) |
-| cline | `cline [-m M] [--cwd DIR] "<prompt>"` (headless via redirected stdout; needs `cline auth`) |
+| cline | `cline --auto-approve false [-m M] [--cwd DIR] "<prompt>"` (`--auto-approve false` always passed; headless via redirected stdout; needs `cline auth`) |
 | goose | `goose run -q [--model M] [-r] -t "<prompt>"` (no `--code`) |
 | kimi | `kimi [-m M] [-c] [--add-dir DIR] -p "<prompt>"` (`-p`/`--prompt` takes the prompt) |
 

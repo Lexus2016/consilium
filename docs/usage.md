@@ -16,7 +16,7 @@ Open a fresh Claude Code session so it picks up the skill, then check the comman
 is there:
 
 ```sh
-consult --list        # shows which assistants are installed and signed in
+consult --list        # shows which assistants are installed (checks installation only, not sign-in)
 ```
 
 ## Three ways it gets used
@@ -124,8 +124,13 @@ Three ways to feed it context:
   tight slice: a function and its callers, a plan, a diff, an error log.
 - **a pipe** (`git diff | consult …`) drops whatever you pipe under `## Input`. The
   advisor's own stdin is closed; only your side reads the pipe.
-- **`--code DIR`** gives the other AI read-only access to a folder so it can look
-  around the repo itself. That folder isn't pasted into the prompt.
+- **`--code DIR`** hands the other AI a working directory for code context — but
+  support is per-advisor. Only 7 of the 12 honor it (`claude`, `agy`, `codex`,
+  `grok`, `kilo`, `cline`, `kimi`); the other five (`hermes`, `opencode`, `pi`,
+  `cursor`, `goose`) warn and ignore it — `cd` into the directory before consulting
+  those. And "read-only" is enforced by `codex` alone (its `--sandbox read-only`);
+  the rest just receive the directory as context. That folder isn't pasted into the
+  prompt.
 
 **Security note:** anything passed through `--context` or a pipe is inlined into the
 prompt, and the prompt is passed to the advisor as a command-line argument. On a
@@ -138,9 +143,15 @@ vague reply back.
 ## Worth keeping in mind
 
 - **You stay in control.** The other AI returns text and is there to advise, not
-  act. codex runs hard-sandboxed read-only; the others answer without editing
-  unless you grant permission, and consilium never passes them permission-granting
-  flags. Every edit stays between you and Claude.
+  act — but how firmly that's *enforced* varies by advisor. `codex` is hard-sandboxed
+  (`--sandbox read-only`); `cline` and `goose` are forced into an approval gate
+  (`--auto-approve false`, `GOOSE_MODE=approve`) that the closed stdin then denies;
+  `claude`, `kimi`, `kilo` and `cursor` fall back to your own permission config; `pi`
+  has no gate at all, so keep sensitive files out of its working folder. consilium's
+  *own* flags never grant permissions — but `--raw` sends your question to the advisor
+  verbatim and `--model` forwards its value as a token (a value beginning with `-` is
+  rejected), so those two are your responsibility. Every edit stays between you and
+  Claude.
 - **Pick an independent one.** Choose a different provider than the one you're using
   — `codex` (OpenAI) or `agy` (Gemini) rather than a second Claude, which mostly
   agrees with itself.

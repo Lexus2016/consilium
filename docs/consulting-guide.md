@@ -29,7 +29,7 @@ advisor only returns text; apply nothing it says without judging it yourself.
 
 1. **Before a DB migration** — `consult --panel agy,codex -- "safe to run twice? where could it lose data?"` → independent idempotency/rollback reads + concrete data-loss risks.
 2. **Changing a public API or signature** — `consult codex --code . -- "what breaks in callers; backward-compat path?"` → the break points + a compatibility strategy.
-3. **Touching auth / crypto / permissions** — `consult council -f auth.py -q "security bugs and authz gaps"` → findings verified against their `file:line` (hallucinated citations dropped).
+3. **Touching auth / crypto / permissions** — `consult council -f auth.py -q "security bugs and authz gaps"` → findings verified against their `file:line` (hallucinated citations flagged in a SOURCE VERIFICATION block).
 4. **Stuck after 2+ failed attempts** — `git diff | consult agy -- "why does this still fail after these attempts?"` → a different hypothesis / the root cause you tunnelled past.
 5. **Before push/merge to main** — `git diff | consult --panel codex,agy --review -- "Task: <what you were asked>"` → `VERDICT: PASS/FAIL` + mismatches against the task.
 6. **Claiming a task is done** — `consult --panel agy,codex --review -- "Task: <requirements>"` → PASS/FAIL + a ranked list of gaps between result and requirements.
@@ -137,8 +137,12 @@ It never edits files; you apply the fixes. Needs `python3` (core `consult` does 
 What comes back is one opinion. Weigh it:
 
 - The advisor is meant to **advise, not act**. It returns text, and every edit
-  stays with you. (codex is sandboxed read-only; the others answer without editing
-  unless you grant permission, and the preamble tells them to advise only.)
+  stays with you. How firmly "advise only" is *enforced* varies by advisor, though:
+  `codex` is sandboxed read-only; `cline`/`goose` are forced into an approval gate
+  (`--auto-approve false`, `GOOSE_MODE=approve`); `claude`/`kimi`/`kilo`/`cursor`
+  fall back to your own permission config; `pi` has no gate at all (the preamble
+  only). consilium's own flags never grant permissions — but `--raw`/`--model` pass
+  caller-supplied tokens through, so those are your responsibility.
 - If it disagrees with you, decide on the merits. Don't apply a suggestion you
   can't justify yourself.
 - If it agrees, that's signal but not proof. Two models can share a blind spot.

@@ -1,8 +1,13 @@
 <!-- consilium:consult-peer START -->
 ## Consulting peer AIs (consilium)
 
-`consult` asks a DIFFERENT AI for an independent opinion. It only returns text —
-it never touches your files. Pick a different provider than yourself; run
+`consult` asks a DIFFERENT AI for an independent opinion; it returns text as its
+deliverable and is steered to advise, not act. How firmly that is enforced varies
+by advisor: codex is hard-sandboxed (--sandbox read-only); cline/goose are forced
+into an approval gate the closed stdin denies; claude/kimi/kilo/cursor follow your
+own permission config; pi has no gate at all (avoid a writable cwd with secrets).
+consilium's own flags never grant permissions, but --raw/--model pass
+caller-supplied tokens through. Pick a different provider than yourself; run
 `consult --list` for the roster.
 
     consult <agent> [--context FILE] [--code DIR] -- "<question>"

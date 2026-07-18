@@ -36,7 +36,7 @@
       "panel_size": 2
     },
     "consilium-frontier": {
-      "_doc": "Strongest readers, parallel + synthesis, code_access=true via --code. POLICY: roster resolved at runtime, restricted to code-reader agents (agy/claude/codex).",
+      "_doc": "Strongest readers, parallel + synthesis, code_access=true via --code. POLICY: roster resolved at runtime, restricted to code-reader agents; claude is excluded by default (COUNCIL_EXCLUDE_AGENTS), so the real default pool is agy/codex/grok/kilo/cline/kimi.",
       "recipe": "parallel",
       "code_access": true,
       "panel_size": 3

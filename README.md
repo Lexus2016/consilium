@@ -47,9 +47,9 @@ with.**
 
 ## Who you can ask
 
-Run `consult --list` to see which of these are installed and signed in on your
-machine. Type the name in the left column; the reply comes from the model on the
-right.
+Run `consult --list` to see which of these are installed on your machine (it checks
+installation only, not sign-in). Type the name in the left column; the reply comes
+from the model on the right.
 
 | You type   | Reply comes from               | Built by      |
 |------------|--------------------------------|---------------|
@@ -166,7 +166,10 @@ before you call something done.
 `consult council` runs a whole panel: several agents on different providers each
 audit the code independently, a separate agent reconciles them into one answer, and
 every finding is **mechanically verified against its `file:line`** — a fabricated or
-out-of-range citation is flagged, so hallucinations don't slip through.
+out-of-range citation is flagged, so hallucinations don't slip through. ("Different
+providers" means different CLI front-ends, not guaranteed-different models: two
+Claude-backed CLIs — or `hermes` and `kimi` both routed to Moonshot — still count as
+diverse, so pick advisors you know run on different models.)
 
 **You ask for it in plain words** — the agent convenes the council itself:
 
@@ -203,7 +206,7 @@ verifiable, using the AI tools you already have.
 | Who synthesizes | **You / your agent** (the hub), with full task context | The trained model, internally | A judge model returns structured analysis; your model writes the final answer |
 | Transparency | Open — you can read each advisor's own answer | Hidden machinery; one answer out | Panel answers + a structured judge report |
 | Verifies findings against your code | Yes — every finding checked against `file:line` | Internal / unspecified | No |
-| Touches your files | Read-only advice; never edits | Text API | Text API |
+| Touches your files | Advice only; every edit stays with the hub | Text API | Text API |
 | Dependencies | Zero-dependency shell core (+ `python3` for the council) | Vendor API | Vendor API (OpenAI-compatible) |
 | Cost | Only the model calls you already pay for — no markup | One bundled bill — flat-rate ($20–$200/mo) or metered | Sum of every panel call + the judge (~3× a single call) |
 | Best for | Code/design review where you stay in control and verify | One-call hidden orchestration | High-stakes research/critique via API |
@@ -220,11 +223,21 @@ visible, findings checked against the real code).
 
 ## Good to know
 
-- The other AI advises, it doesn't act. codex runs hard-sandboxed read-only; the
-  others answer without editing unless you grant permission, and consilium never
-  passes them permission-granting flags. Either way, your edits stay yours.
-- The assistants you want to ask have to be installed and signed in first. Run
-  `consult --list` to see who's ready.
+- The other AI advises, it doesn't act — but how firmly that's *enforced* varies by
+  advisor. `codex` is hard-sandboxed (`--sandbox read-only`); `cline` and `goose` are
+  forced into an approval gate (`--auto-approve false`, `GOOSE_MODE=approve`) that the
+  closed stdin then denies; `claude`, `kimi`, `kilo` and `cursor` fall back to your
+  own permission config; `pi` has no gate at all, so keep sensitive files out of its
+  working folder. consilium's *own* flags never grant permissions — but `--raw` sends
+  your question to the advisor verbatim and `--model` forwards its value as a token (a
+  value beginning with `-` is rejected), so those two are your responsibility. Either
+  way, your edits stay yours.
+- The assistants you want to ask have to be installed and signed in first.
+  `consult --list` shows which are *installed* — it can't check sign-in, so a listed
+  agent may still need a login.
+- Every consult saves a transcript (the full prompt + the answer) to
+  `~/.consilium/log/`, kept owner-private (files `chmod 600`); the newest 200 are
+  retained.
 - It runs in your current project folder, so your code is already in front of it.
 - Every call is a real request to another model, so save it for the things that
   matter, not trivia.
