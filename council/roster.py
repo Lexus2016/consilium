@@ -18,7 +18,7 @@ import re
 import subprocess
 from dataclasses import replace
 
-from .config import AGENT_PROVIDERS, AGENTS_WITH_CODE_ACCESS, Profile
+from .config import AGENT_PROVIDERS, AGENTS_WITH_CODE_ACCESS, MODEL_CONFIGURABLE_AGENTS, Profile
 from .spawn import CONSULT_BIN
 
 _AVAIL_CACHE: list[str] | None = None
@@ -124,5 +124,14 @@ def resolve_roster(
         note = (
             f"resolved {policy.name!r}: synth={synth}, panel={answerers}"
             + (" (verify degraded to parallel: <2 answerers)" if degraded else "")
+        )
+    # Disclose (never hardcode) the residual uncertainty: any answerer whose provider
+    # the map cannot pin means the panel's cross-provider independence is best-effort.
+    unverifiable = [a for a in answerers if a in MODEL_CONFIGURABLE_AGENTS]
+    if unverifiable:
+        note += (
+            f" | NOTE: cross-provider independence is best-effort — {unverifiable} run a "
+            "user-configured model whose provider cannot be verified, so two panel "
+            "members may in fact share a provider"
         )
     return concrete, None, note

@@ -25,7 +25,7 @@ twelve — see the **Dispatch table** below for the exact command built for each
 | `codex` (OpenAI) | `codex exec "Q"` | not supported (dispatch runs `exec` and ignores `--continue`) | `codex plugin`, can be MCP server |
 
 Shared extras: `--add-dir` / `-C` (give a working dir as context), `-m`/`--model`,
-sandbox / approval controls (codex: `--sandbox read-only -a never`).
+sandbox / approval controls (codex: `--sandbox read-only`).
 
 ## Architecture — 3 layers
 

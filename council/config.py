@@ -33,9 +33,13 @@ def _require_int(name: str, value: Any, lo: int) -> int:
     return value
 
 
-# Which provider each agent CLI talks to. Used to enforce cross-provider
-# diversity in a panel: two members on the SAME provider give fake independence,
-# which is exactly the failure mode that makes a council pointless.
+# Best-effort ADVISORY hint for which provider each agent CLI talks to, used only to
+# de-duplicate OBVIOUS same-provider members. It is NOT authoritative: a user's
+# configured model changes over time and several CLIs are model-agnostic front-ends,
+# so two members the map treats as distinct can in fact share a provider. True
+# cross-provider independence is therefore DISCLOSED as best-effort at roster
+# resolution (see MODEL_CONFIGURABLE_AGENTS) — never asserted as a hard guarantee, and
+# never hardcoded to a provider the CLI does not pin.
 AGENT_PROVIDERS: dict[str, str] = {
     "claude": "anthropic",
     "codex": "openai",
@@ -61,6 +65,14 @@ AGENT_PROVIDERS: dict[str, str] = {
     "cline": "cline",
     "goose": "goose",
 }
+
+# Agents whose real provider CANNOT be pinned from the CLI alone: the model is chosen
+# by the user (model-agnostic front-ends) or its configured model varies over time.
+# When a resolved panel includes any of these, cross-provider independence is only
+# best-effort — two of them, or one of them plus a named-provider agent, may run the
+# same underlying model — so the roster note DISCLOSES it instead of the map claiming
+# a distinctness it cannot verify.
+MODEL_CONFIGURABLE_AGENTS = {"opencode", "pi", "cursor", "kilo", "cline", "goose", "hermes"}
 
 # Agents whose `consult` dispatch actually passes the working directory through
 # to the model (claude/agy/kimi via --add-dir, codex via -C, grok via --cwd, kilo

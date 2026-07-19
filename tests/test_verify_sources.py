@@ -182,6 +182,55 @@ class VerifierCore(unittest.TestCase):
         # must NOT tell headless advisors to spawn subagents / explore (tool-loop hang)
         self.assertNotIn("subagent", q.lower())
 
+    # --- M1: markdown-formatted citations must not evade the verifier ----------
+    def test_markdown_prefixed_source_is_checked_not_invisible(self):
+        p = self._mk("a.py", 10)
+        for prefix in ("- ", "* ", "> ", "1. ", "1) ", "**"):
+            checks = verify_sources(f"{prefix}SOURCE: /nope/ghost.py:9999", {_norm(p)})
+            self.assertEqual(len(checks), 1, f"{prefix!r}SOURCE must be checked, not ignored")
+            self.assertFalse(checks[0].ok)
+            self.assertIn("not in audited set", checks[0].reason)
+
+    def test_valid_bulleted_citation_verifies_ok(self):
+        p = self._mk("a.py", 10)
+        checks = verify_sources(f"- SOURCE: {p}:3", {_norm(p)})
+        self.assertEqual(len(checks), 1)
+        self.assertTrue(checks[0].ok)
+
+    def test_bold_wrapped_citation_verifies_ok(self):
+        # `**SOURCE:** p:3` (bold label) and a fully-bold `**SOURCE: p:3**` are valid
+        # citations; the wrapping markdown must not flag them (regression caught in
+        # the pre-release panel review).
+        p = self._mk("a.py", 10)
+        for form in (f"**SOURCE:** {p}:3", f"**SOURCE: {p}:3**"):
+            checks = verify_sources(form, {_norm(p)})
+            self.assertEqual(len(checks), 1, f"{form!r} must parse to one check")
+            self.assertTrue(checks[0].ok, f"{form!r} is a valid citation, not malformed")
+            self.assertEqual(checks[0].line, 3)
+
+    def test_lowercase_source_in_prose_is_not_a_citation(self):
+        # A lowercase 'source:' is prose, not the mandated uppercase citation; matching
+        # it would falsely flag ordinary sentences as malformed citations.
+        p = self._mk("a.py", 10)
+        self.assertEqual(verify_sources("source: the auth module looks fine", {_norm(p)}), [])
+
+    # --- L: trailing punctuation must not falsely flag a valid citation --------
+    def test_trailing_punctuation_does_not_falsely_flag(self):
+        p = self._mk("a.py", 10)
+        for suffix in (".", ")", ",", ";"):
+            checks = verify_sources(f"SOURCE: {p}:3{suffix}", {_norm(p)})
+            self.assertEqual(len(checks), 1)
+            self.assertTrue(checks[0].ok, f"trailing {suffix!r} must not flag a valid citation")
+            self.assertEqual(checks[0].line, 3)
+
+    # --- M2: a NUL byte in a citation path must be flagged, not crash the audit -
+    def test_nul_byte_in_citation_is_flagged_not_crashing(self):
+        p = self._mk("a.py", 10)
+        checks = verify_sources("SOURCE: /evil\x00.py:3", {_norm(p)})
+        self.assertEqual(len(checks), 1)
+        self.assertFalse(checks[0].ok)
+        self.assertIn("unparseable path", checks[0].reason)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -222,9 +222,13 @@ def run_agent(
         )
 
     try:
-        # Register INSIDE the try: if a KeyboardInterrupt lands right after the
-        # spawn, the `except BaseException` below terminates the child so it is
-        # never orphaned (the pre-add window the audit's M1 worried about).
+        # Register INSIDE the try so a KeyboardInterrupt AFTER this point is caught
+        # by the `except BaseException` below, which terminates the child. RESIDUAL
+        # (rare, accepted — see audit): a signal landing in the ~few-bytecode window
+        # BETWEEN Popen returning and this add() is NOT covered; under the council's
+        # interrupt handler (which os._exit()s, bypassing all except/finally) that
+        # would orphan a just-spawned advisor. A full fix needs signal masking around
+        # spawn->register — out of scope for the low probability.
         if registry is not None:
             registry.add(proc)
         # +30s grace over the consult-internal timeout so the agent's own
@@ -232,7 +236,10 @@ def run_agent(
         out, stderr_text = proc.communicate(timeout=timeout_seconds + 30)
         wall = time.monotonic() - start
         if registry is not None and registry.cancelled:
-            return MemberResult(agent, role, False, "", wall, error="cancelled")
+            # The advisor may have already produced (and we already paid for) its
+            # answer before the cancel landed. Preserve it so record() persists the
+            # paid text instead of discarding an already-received consultation.
+            return MemberResult(agent, role, False, (out or "").strip(), wall, error="cancelled")
         stderr_part = (stderr_text or "").strip()
         if proc.returncode != 0:
             return MemberResult(
@@ -245,16 +252,20 @@ def run_agent(
         return MemberResult(agent, role, True, answer, wall)
     except subprocess.TimeoutExpired:
         # Kill the WHOLE group (the advisor is a grandchild), then drain the pipes
-        # so the child is reaped and no zombie / open-fd is left behind.
+        # so the child is reaped and no zombie / open-fd is left behind. Keep the
+        # drained stdout: the advisor may have already streamed (and we already paid
+        # for) a partial/complete answer before it hung, so record() must persist it
+        # rather than discard a paid consultation on timeout.
         _signal_group(proc, signal.SIGKILL)
+        out = ""
         stderr_part = ""
         try:
-            _, stderr_text = proc.communicate(timeout=5)
+            out, stderr_text = proc.communicate(timeout=5)
             stderr_part = (stderr_text or "").strip()
         except Exception:  # noqa: BLE001
             pass
         return MemberResult(
-            agent, role, False, "", time.monotonic() - start,
+            agent, role, False, (out or "").strip(), time.monotonic() - start,
             error=f"timed out after {timeout_seconds}s + 30s grace{((': ' + stderr_part) if stderr_part else '')}",
         )
     except BaseException:

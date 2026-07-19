@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-VERSION="0.7.1"
+VERSION="0.7.2"
 PROG="consult"
 
 AGENTS="claude agy hermes opencode codex grok pi cursor kilo cline goose kimi"
@@ -223,7 +223,10 @@ if [ -n "$panel" ]; then
     err "use either <agent> or --panel, not both"; exit 2
   fi
   # comma-separated -> space-separated, keeping only known + installed advisors,
-  # de-duplicated, order preserved.
+  # de-duplicated, order preserved. `set -f` while splitting so a panel value like
+  # '*' is NOT pathname-expanded against the CWD (the unquoted command substitution
+  # would otherwise turn '*' into filenames, some of which could match an agent name).
+  set -f
   for a in $(printf '%s' "$panel" | tr ',' ' '); do
     if ! is_known_agent "$a"; then
       warn "panel: unknown agent '$a' (expected one of: $AGENTS); skipping"; continue
@@ -233,6 +236,7 @@ if [ -n "$panel" ]; then
     fi
     case " $panel_agents " in *" $a "*) ;; *) panel_agents="$panel_agents $a" ;; esac
   done
+  set +f
   panel_agents="${panel_agents# }"
   if [ -z "$panel_agents" ]; then
     err "panel: no usable advisors in '$panel'"; exit 2

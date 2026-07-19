@@ -183,13 +183,18 @@ def build_question(code_block: str, user_question: str) -> str:
 # `_SOURCE_ANY` matches a SOURCE marker only at the START of a line (after optional
 # whitespace) so a `SOURCE:` appearing INSIDE prose or a suggested ```diff block
 # (e.g. `+LOG = "SOURCE: x"`) does not create a spurious malformed-citation and
-# wrongly fail a valid answer. `_CITE` then parses `path:line` from the rest. The
-# path is non-greedy so it tolerates spaces AND colons; the line number may carry a
-# trailing `:col`; and it must be followed by whitespace, `(`, or end — so `:5`
-# inside `/a:5/b.py:10` does not win over the real `:10`. A SOURCE marker whose rest
-# fails `_CITE` is a MALFORMED citation: flagged BAD, never silently ignored.
-_SOURCE_ANY = re.compile(r"(?m)^[ \t]*SOURCE:[ \t]*([^\n]*)")
-_CITE = re.compile(r"^(?P<path>.+?):(?P<line>\d+)(?::\d+)?(?=\s|\(|$)")
+# wrongly fail a valid answer. It ALSO tolerates a leading markdown list/emphasis
+# marker (`- `, `* `, `> `, `1. `, `**`) before the mandated uppercase `SOURCE:`, so a
+# bulleted or bold citation to a file never sent is still CHECKED, not invisible — the
+# exact evasion an advisor's markdown formatting would otherwise slip past the guard.
+# `_CITE` then parses `path:line` from the rest. The path is non-greedy so it tolerates
+# spaces AND colons; the line number may carry a trailing `:col`; and it must be
+# followed by whitespace, `(`, end, or closing punctuation (`. , ; ) ]`) — so `:5`
+# inside `/a:5/b.py:10` does not win over the real `:10`, while a valid `:5.`/`:5)` at
+# the end of a sentence is NOT falsely flagged. A SOURCE marker whose rest fails
+# `_CITE` is a MALFORMED citation: flagged BAD, never silently ignored.
+_SOURCE_ANY = re.compile(r"(?m)^[ \t]*(?:[-*>]\s+|\d+[.)]\s+|\*\*)?SOURCE:[ \t]*([^\n]*)")
+_CITE = re.compile(r"^(?P<path>.+?):(?P<line>\d+)(?::\d+)?(?=\s|\(|$|[.,;)\]])")
 
 
 def verify_sources(
@@ -214,14 +219,26 @@ def verify_sources(
 
     checks: list[SourceCheck] = []
     for m in _SOURCE_ANY.finditer(final_text):
-        rest = m.group(1).strip()
+        # Strip markdown emphasis WRAPPING the citation (`**SOURCE:** path:line`, whose
+        # closing `**` lands at the start of the captured rest, and a fully-bold
+        # `**SOURCE: path:line**`, whose `**` trails) so a bold-formatted citation is
+        # parsed on its merits, not flagged malformed by stray asterisks. Absolute
+        # citation paths (the SOURCE_RULE mandate) never start or end with `*`.
+        rest = m.group(1).strip().strip("*").strip()
         pm = _CITE.match(rest)
         if not pm:
             checks.append(SourceCheck(rest or "(empty)", None, False, "unparseable citation"))
             continue
         raw_path = pm.group("path").strip()
         line = int(pm.group("line"))
-        cp = _norm(raw_path)
+        try:
+            cp = _norm(raw_path)
+        except (ValueError, OSError):
+            # A citation path can carry a NUL byte (or other bytes os.path.realpath
+            # rejects); flag it rather than let a ValueError abort the whole audit
+            # AFTER the advisors were already paid.
+            checks.append(SourceCheck(raw_path, line, False, "unparseable path"))
+            continue
         if cp in embedded_files:
             n = counts.get(cp, 0)
             if 1 <= line <= n:

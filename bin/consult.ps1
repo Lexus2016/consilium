@@ -14,7 +14,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Version  = '0.7.1'
+$Version  = '0.7.2'
 $Prog     = 'consult'
 $Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex', 'grok', 'pi', 'cursor', 'kilo', 'cline', 'goose', 'kimi')
 $Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files. Reply with your written analysis as plain text — that written answer is the entire deliverable.'
@@ -313,21 +313,30 @@ if ($panelAgents.Count -gt 0) {
     }
 
     $panelStatus = 0
-    foreach ($c in $children) {
-        $c.Proc.WaitForExit()
-        if ($c.Proc.ExitCode -ne 0) { $panelStatus = 1 }
-    }
+    try {
+        foreach ($c in $children) {
+            $c.Proc.WaitForExit()
+            if ($c.Proc.ExitCode -ne 0) { $panelStatus = 1 }
+        }
 
-    foreach ($c in $children) {
+        foreach ($c in $children) {
+            [Console]::Out.WriteLine('')
+            [Console]::Out.WriteLine("===== $($c.Agent) =====")
+            [Console]::Out.WriteLine('')
+            $o = [string]$c.Out.Result
+            $e = [string]$c.Err.Result
+            if ($o) { [Console]::Out.Write($o) }
+            if ($e) { [Console]::Error.Write($e) }
+        }
         [Console]::Out.WriteLine('')
-        [Console]::Out.WriteLine("===== $($c.Agent) =====")
-        [Console]::Out.WriteLine('')
-        $o = [string]$c.Out.Result
-        $e = [string]$c.Err.Result
-        if ($o) { [Console]::Out.Write($o) }
-        if ($e) { [Console]::Error.Write($e) }
+    } finally {
+        # On Ctrl-C / an error, kill any panel child still running so a paid advisor
+        # process tree is not orphaned (parity with the bash panel's INT/TERM trap
+        # that group-kills setsid children).
+        foreach ($c in $children) {
+            if (-not $c.Proc.HasExited) { try { $c.Proc.Kill($true) } catch {} }
+        }
     }
-    [Console]::Out.WriteLine('')
 
     if ($panelCtxTmp) { Remove-Item -LiteralPath $panelCtxTmp -Force -ErrorAction SilentlyContinue }
     exit $panelStatus
@@ -523,18 +532,18 @@ if ($env:CONSILIUM_TIMEOUT) {
 function Invoke-Agent {
     param([string]$AgentName, [string[]]$ArgList, [int]$TimeoutSec)
 
-    $src      = (Get-Command $AgentName -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-    $fileName = $src
-    $prefix   = @()
-    # On Windows, npm-style shims are often .cmd/.bat — those must run via cmd.exe.
-    if ($IsWindows -and ($src -match '\.(cmd|bat)$')) {
-        $fileName = Join-Path $env:SystemRoot 'System32\cmd.exe'
-        $prefix   = @('/c', $src)
-    }
+    $src = (Get-Command $AgentName -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName               = $fileName
-    foreach ($a in ($prefix + $ArgList)) { $psi.ArgumentList.Add([string]$a) }
+    # Run the resolved binary/shim DIRECTLY — never wrap a .cmd/.bat shim in
+    # `cmd.exe /c`. Handing our ArgumentList to cmd.exe makes cmd RE-PARSE it, and an
+    # untrusted prompt ('## Input' diff / '## Context') containing `"`, `&`, `|` or `%`
+    # then escapes into a fresh command (CVE-2024-24576 / "BatBadBut" injection). With
+    # the .cmd/.bat file itself as FileName, .NET applies its OWN cmd-safe argument
+    # escaping. (Launching a .cmd with UseShellExecute=false needs .NET 8+, i.e.
+    # pwsh 7.4+; an older pwsh errors here rather than running the shim unsafely.)
+    $psi.FileName               = $src
+    foreach ($a in $ArgList) { $psi.ArgumentList.Add([string]$a) }
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError  = $true
     $psi.RedirectStandardInput  = $true
@@ -636,8 +645,14 @@ if (-not $noLog) {
         '',
         [string]$res.StdOut
     )
-    Set-Content -LiteralPath $logfile -Value $lines -Encoding UTF8
+    # Create + lock down the transcript BEFORE writing the prompt into it, so the
+    # full prompt (question + --context + piped input) is never readable at the
+    # process umask during a write window on a multi-user host — parity with the bash
+    # `umask 077` subshell, which makes the file 600 at creation. (The empty file
+    # during the create->chmod gap holds no prompt content yet.)
+    New-Item -ItemType File -Force -Path $logfile | Out-Null
     if (-not $IsWindows) { & chmod '600' $logfile 2>$null }
+    Set-Content -LiteralPath $logfile -Value $lines -Encoding UTF8
     [Console]::Error.WriteLine('')
     [Console]::Error.WriteLine("[consilium] transcript: $logfile")
 

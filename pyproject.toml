@@ -1,6 +1,6 @@
 [project]
 name = "consilium-council"
-version = "0.7.1"
+version = "0.7.2"
 description = "Multi-agent code-audit council for the consilium cross-AI consultation bus"
 requires-python = ">=3.10"
 

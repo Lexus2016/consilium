@@ -178,5 +178,70 @@ class ResultPersistence(unittest.TestCase):
             self.assertIn("successful retry answer", joined)
 
 
+class RunAgentPreservesPaidOutput(unittest.TestCase):
+    """H1/R1: run_agent must NOT discard an already-received paid answer when the run
+    is cancelled or the member times out — record() persists only a non-empty answer,
+    so nulling `out` on these paths silently loses a paid consultation."""
+
+    class _FakePopen:
+        def __init__(self, *, out="", timeout_first=False):
+            self.pid = 2_000_000_000  # not a real pid; _signal_group is stubbed out
+            self.returncode = 0
+            self._out = out
+            self._timeout_first = timeout_first
+            self._n = 0
+
+        def communicate(self, timeout=None):
+            self._n += 1
+            if self._timeout_first and self._n == 1:
+                raise subprocess.TimeoutExpired(cmd="fake", timeout=timeout)
+            return (self._out, "")
+
+    def test_timeout_preserves_streamed_paid_answer(self):
+        from council import spawn
+        fake = self._FakePopen(out="PAID PARTIAL", timeout_first=True)
+        orig_popen, orig_sig = spawn.subprocess.Popen, spawn._signal_group
+        spawn.subprocess.Popen = lambda *a, **k: fake
+        spawn._signal_group = lambda proc, sig: None
+        try:
+            m = spawn.run_agent("codex", "q", timeout_seconds=0, registry=None)
+        finally:
+            spawn.subprocess.Popen, spawn._signal_group = orig_popen, orig_sig
+        self.assertFalse(m.ok)
+        self.assertIn("timed out", m.error)
+        self.assertEqual(m.answer, "PAID PARTIAL", "timed-out member's paid stdout must be kept")
+
+    def test_cancel_preserves_already_received_paid_answer(self):
+        from council import spawn
+
+        class _FlipReg:
+            results_dir = None
+
+            def __init__(self):
+                self._n = 0
+
+            @property
+            def cancelled(self):
+                self._n += 1
+                return self._n > 1  # False at the pre-spawn check, True post-communicate
+
+            def add(self, p):
+                pass
+
+            def remove(self, p):
+                pass
+
+        fake = self._FakePopen(out="PAID ANSWER")
+        orig_popen = spawn.subprocess.Popen
+        spawn.subprocess.Popen = lambda *a, **k: fake
+        try:
+            m = spawn.run_agent("codex", "q", timeout_seconds=5, registry=_FlipReg())
+        finally:
+            spawn.subprocess.Popen = orig_popen
+        self.assertFalse(m.ok)
+        self.assertEqual(m.error, "cancelled")
+        self.assertEqual(m.answer, "PAID ANSWER", "cancelled member's received answer must be kept")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

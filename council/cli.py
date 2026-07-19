@@ -8,16 +8,21 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 
 from .config import load_config, validate_config, ConfigError
 
-# The tool's authoritative verdict line. A synthesizer/advisor must not be able
-# to forge it inside its own answer, so any such line — even indented — in the
-# untrusted body is neutralized before printing (cmd_audit). The real trailer is
-# emitted by this module.
-_CONTROL_LINE_RE = re.compile(r"(?m)^([ \t]*)(COUNCIL STATUS:)")
+# The tool's authoritative verdict line. A synthesizer/advisor must not be able to
+# forge it inside its own (untrusted) answer, so EVERY occurrence of the token in the
+# body is neutralized before printing (cmd_audit) — regardless of line position or
+# exotic line breaks (\r \f \v U+2028 U+0085) that a line-anchored regex would miss,
+# and rewriting the token itself so a bare substring match on it also fails. The real
+# trailer is emitted separately by this module.
+_CONTROL_TOKEN = "COUNCIL STATUS:"
+
+
+def _neutralize_control(text: str) -> str:
+    return text.replace(_CONTROL_TOKEN, "COUNCIL STATUS (from advisor):")
 
 
 def _add_common(p: argparse.ArgumentParser):
@@ -53,10 +58,9 @@ def cmd_audit(args) -> int:
 
     res = run_audit(args.file, args.question, profile_name=args.profile,
                     config_path=args.config)
-    # Print the (untrusted) answer, but neutralize any line — even indented — that
-    # would forge this tool's own COUNCIL STATUS trailer; the caller must key on
-    # the real one below.
-    print(_CONTROL_LINE_RE.sub(r"\1| \2", res.final_text))
+    # Print the (untrusted) answer, but neutralize any forged occurrence of this
+    # tool's own COUNCIL STATUS token; the caller must key on the real one below.
+    print(_neutralize_control(res.final_text))
 
     bad_sources = sum(1 for s in res.sources if not s.ok)
     total_sources = len(res.sources)
