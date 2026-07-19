@@ -170,6 +170,18 @@ class VerifierCore(unittest.TestCase):
         self.assertFalse(mentions_no_findings("NO_FINDINGS_YET"))
         self.assertFalse(mentions_no_findings("no findings at all"))
 
+    def test_build_question_is_adversarial_cites_and_has_no_subagent_line(self):
+        from council.orchestrator import build_question, AUDIT_PREAMBLE, NO_FINDINGS_TOKEN
+        q = build_question("    1\tsome code", "find bugs")
+        self.assertIn(AUDIT_PREAMBLE, q)          # adversarial framing is present
+        self.assertIn("ADVERSARIAL", q)
+        self.assertIn("find bugs", q)             # the caller's question
+        self.assertIn("SOURCE:", q)               # the citation rule (anti-hallucination guard)
+        self.assertIn(NO_FINDINGS_TOKEN, q)       # the clean-audit token rule
+        self.assertIn("some code", q)             # the embedded code
+        # must NOT tell headless advisors to spawn subagents / explore (tool-loop hang)
+        self.assertNotIn("subagent", q.lower())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

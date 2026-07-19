@@ -222,15 +222,21 @@ def _run_member(
     A fast ok=False (e.g. a member CLI that exits non-zero on a hiccup) is
     usually transient; one retry markedly improves panel stability.
     """
-    result = run_agent(
-        agent, question, role=role, context_file=context_file, code_dir=code_dir,
-        review=review, timeout_seconds=timeout_seconds, registry=registry,
-    )
-    if (not result.ok) and (registry is None or not registry.cancelled):
-        result = run_agent(
+    def _attempt():
+        m = run_agent(
             agent, question, role=role, context_file=context_file, code_dir=code_dir,
             review=review, timeout_seconds=timeout_seconds, registry=registry,
         )
+        # Persist EACH attempt the moment it lands — including a first attempt that
+        # produced paid text but then failed — so a retry that hangs or gets
+        # interrupted can't discard an answer we already paid for.
+        if registry is not None:
+            registry.record(m)
+        return m
+
+    result = _attempt()
+    if (not result.ok) and (registry is None or not registry.cancelled):
+        result = _attempt()
     return result
 
 
@@ -369,13 +375,16 @@ def _synthesize(
         )
     synth_ctx = _write_temp(body)
     try:
-        return run_agent(
+        synth = run_agent(
             profile.synthesizer,
             "Produce the single final answer per the instructions in the context.",
             role="synth", context_file=synth_ctx, code_dir=None,
             # text-only reconcile; giving --code makes the agent hang on its own read loop
             timeout_seconds=min(member_timeout, SYNTH_TIMEOUT_CAP), registry=registry,
         )
+        if registry is not None:
+            registry.record(synth)
+        return synth
     finally:
         if os.path.exists(synth_ctx):
             os.unlink(synth_ctx)

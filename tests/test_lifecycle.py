@@ -19,7 +19,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from council import recipes  # noqa: E402
-from council.spawn import _terminate  # noqa: E402
+from council.spawn import _terminate, ProcessRegistry, MemberResult  # noqa: E402
 
 
 @unittest.skipUnless(hasattr(os, "killpg"), "process groups are POSIX-only")
@@ -101,6 +101,81 @@ class ParallelMapCancellation(unittest.TestCase):
 
     def test_empty_is_noop(self):
         self.assertEqual(recipes._parallel_map([], lambda a: a), [])
+
+
+class RunDirPruning(unittest.TestCase):
+    def test_prunes_stale_runs_but_never_a_recent_or_active_one(self):
+        from council.orchestrator import _new_run_dir
+        with tempfile.TemporaryDirectory() as base:
+            stale = os.path.join(base, "old-run")
+            os.makedirs(stale)
+            with open(os.path.join(stale, "01-panel-x.md"), "w") as f:
+                f.write("old paid answer")
+            two_days_ago = time.time() - 2 * 86400
+            os.utime(stale, (two_days_ago, two_days_ago))
+
+            active = os.path.join(base, "active-run")
+            os.makedirs(active)
+            with open(os.path.join(active, "01-panel-y.md"), "w") as f:
+                f.write("live paid answer")
+
+            new = _new_run_dir(base=base)  # triggers the prune
+
+            self.assertFalse(os.path.exists(stale), "a run untouched for >1 day is pruned")
+            self.assertTrue(os.path.exists(active),
+                            "a recent/active run's preserved answers are NEVER pruned")
+            self.assertTrue(os.path.isdir(new))
+
+
+class ResultPersistence(unittest.TestCase):
+    """A member's answer is saved the moment it lands, so a later kill/timeout of
+    the whole council never discards an already-paid consultation."""
+
+    def test_registry_persists_any_nonempty_answer_with_status(self):
+        with tempfile.TemporaryDirectory() as d:
+            reg = ProcessRegistry(results_dir=d)
+            reg.record(MemberResult("codex", "panel", True, "the real answer", 12.0))
+            # ok=False but with TEXT (printed output, then exited non-zero) -> still paid, still saved
+            reg.record(MemberResult("opencode", "panel", False, "partial paid answer", 8.0, error="exit 1"))
+            # a pure failure with no answer -> nothing to save
+            reg.record(MemberResult("agy", "panel", False, "", 5.0, error="timeout"))
+            files = sorted(os.listdir(d))
+            self.assertEqual(len(files), 2, "both non-empty answers saved; the empty failure skipped")
+            joined = "\n".join(open(os.path.join(d, f)).read() for f in files)
+            self.assertIn("the real answer", joined)
+            self.assertIn("partial paid answer", joined)
+            self.assertIn("FAILED", joined)  # the non-zero-exit member is marked, not silently dropped
+
+    def test_registry_without_dir_is_noop(self):
+        # no results_dir configured -> record() must not raise
+        ProcessRegistry().record(MemberResult("codex", "panel", True, "x", 1.0))
+
+    def test_run_member_records_each_attempt_not_just_the_retry(self):
+        # A first attempt that printed paid text then failed must be saved BEFORE the
+        # retry overwrites it — otherwise an interrupted retry loses paid output.
+        calls = {"n": 0}
+
+        def fake_run_agent(agent, question, **kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return MemberResult(agent, "panel", False, "paid partial answer", 3.0, error="exit 1")
+            return MemberResult(agent, "panel", True, "successful retry answer", 4.0)
+
+        with tempfile.TemporaryDirectory() as d:
+            reg = ProcessRegistry(results_dir=d)
+            orig = recipes.run_agent
+            recipes.run_agent = fake_run_agent
+            try:
+                res = recipes._run_member("codex", "q", role="panel", context_file=None,
+                                          code_dir=None, timeout_seconds=10, registry=reg)
+            finally:
+                recipes.run_agent = orig
+            self.assertTrue(res.ok, "the final result is the successful retry")
+            files = sorted(os.listdir(d))
+            self.assertEqual(len(files), 2, "both the failed-with-text first attempt AND the retry are saved")
+            joined = "\n".join(open(os.path.join(d, f)).read() for f in files)
+            self.assertIn("paid partial answer", joined)
+            self.assertIn("successful retry answer", joined)
 
 
 if __name__ == "__main__":

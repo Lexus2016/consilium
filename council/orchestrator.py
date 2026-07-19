@@ -15,7 +15,12 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import signal
 import sys
+import tempfile
+import threading
+import time
 from dataclasses import dataclass
 
 from .config import load_config, ConfigError
@@ -146,8 +151,27 @@ def gather_code(files: list[str], max_lines: int = DEFAULT_MAX_EMBEDDED_LINES) -
     return text, embedded
 
 
+# Adversarial framing for the council's code AUDIT (only ever used by build_question,
+# i.e. `consult council` — NOT the neutral single-advisor consult). It counters
+# sycophancy (an agreeable reviewer rubber-stamps and misses real defects) WITHOUT
+# inviting fabrication (the SOURCE_RULE + the mechanical file:line verification are the
+# actual anti-hallucination guard). Deliberately does NOT tell the advisor to spawn
+# subagents / explore — that is what makes headless agents hang in a tool loop.
+AUDIT_PREAMBLE = (
+    "You are an ADVERSARIAL code auditor reviewing another team's code. Your job is to "
+    "find what is WRONG — real bugs, security holes, race conditions, resource leaks, "
+    "broken edge cases, design flaws, and gaps — and prove each one against the code. "
+    "Do NOT be agreeable, reassuring, or eager to approve; a reviewer who wants to please "
+    "misses real defects. Equally, do NOT invent problems to look thorough: every claim "
+    "must be tied to the exact line where it occurs (see the OUTPUT RULES), or it is not a "
+    "finding. Reason carefully, be concrete, and challenge the code hard — but only where "
+    "the code actually earns it."
+)
+
+
 def build_question(code_block: str, user_question: str) -> str:
     return (
+        f"{AUDIT_PREAMBLE}\n\n"
         f"{user_question.strip()}\n\n"
         f"{SOURCE_RULE}\n\n"
         "The code is shown WITH line numbers (number<TAB>code):\n\n"
@@ -230,6 +254,67 @@ def _strip_boilerplate(text: str, patterns: list[str]) -> str:
     return text
 
 
+def _new_run_dir(base: str | None = None) -> str:
+    """An owner-private per-run directory under ~/.consilium/council/ where each
+    member's answer is saved as it arrives, so a killed run can be recovered."""
+    if base is None:
+        base = os.path.join(os.path.expanduser("~"), ".consilium", "council")
+    os.makedirs(base, exist_ok=True)
+    try:
+        os.chmod(base, 0o700)
+    except OSError:
+        pass
+    # Bound accumulation of interrupted runs by pruning ONLY directories untouched
+    # for over a day. A concurrent or recent audit (freshly-created, freshly-written
+    # dir) is never eligible — a count-based "keep newest N" prune could delete a
+    # still-active run's preserved answers out from under it.
+    try:
+        cutoff = time.time() - 86400
+        for name in os.listdir(base):
+            p = os.path.join(base, name)
+            try:
+                if os.path.isdir(p) and os.path.getmtime(p) < cutoff:
+                    shutil.rmtree(p, ignore_errors=True)
+            except OSError:
+                pass
+    except OSError:
+        pass
+    # mkdtemp guarantees a UNIQUE directory (a bare timestamp+pid collides for two
+    # run_audit() calls in the same process within one second) and creates it 0700.
+    return tempfile.mkdtemp(dir=base, prefix=f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-")
+
+
+def _install_interrupt_handler(registry: ProcessRegistry, results_dir: str):
+    """On a hard signal (SIGTERM from a launcher/`timeout`, or Ctrl-C) kill the
+    child advisors and preserve the answers already saved under ``results_dir``.
+    Python does NOT raise on a bare SIGTERM, so without this the cancel path would
+    be skipped — leaving orphaned paid advisors and losing the partial answers.
+    Only installable from the main thread; returns handlers to restore."""
+    def _on_signal(signum, _frame):
+        registry.cancel_all()
+        print(f"\n[council] interrupted (signal {signum}) — kept the answers already "
+              f"received in {results_dir}", file=sys.stderr)
+        sys.stderr.flush()
+        os._exit(130)
+
+    saved = []
+    if threading.current_thread() is threading.main_thread():
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                saved.append((sig, signal.signal(sig, _on_signal)))
+            except (ValueError, OSError):
+                pass
+    return saved
+
+
+def _restore_handlers(saved) -> None:
+    for sig, old in saved:
+        try:
+            signal.signal(sig, old)
+        except (ValueError, OSError):
+            pass
+
+
 def run_audit(
     files: list[str],
     user_question: str,
@@ -273,32 +358,46 @@ def run_audit(
     concrete, single_agent, roster_note = resolve_roster(profile, list_available_agents())
     print(f"[council] {roster_note}", file=sys.stderr)
 
-    registry = ProcessRegistry()
+    results_dir = _new_run_dir()
+    registry = ProcessRegistry(results_dir=results_dir)
+    saved_handlers = _install_interrupt_handler(registry, results_dir)
+    success = False
     try:
-        if concrete is not None:
-            result = run_recipe(
-                concrete, question, "",
-                working_dir=cfg.working_dir_abs, code_access=False,
-                member_timeout=member_timeout, registry=registry,
-                max_synth_chars=cfg.max_synth_chars,
-                progress=lambda msg: print(f"[council] {msg}", file=sys.stderr),
-            )
-            raw_text, members, run_note = result.final_text, result.members, result.note
-        elif single_agent is not None:
-            # Route through _run_member so the lone agent gets the SAME one-retry
-            # on a transient failure that panel members get (M11).
-            m = _run_member(
-                single_agent, question, role="panel", context_file=None,
-                code_dir=None, timeout_seconds=member_timeout, registry=registry,
-            )
-            raw_text, members, run_note = m.answer, [m], "single-agent"
-        else:
-            raise SystemExit(roster_note)
-    except BaseException:
-        registry.cancel_all()
-        raise
+        try:
+            if concrete is not None:
+                result = run_recipe(
+                    concrete, question, "",
+                    working_dir=cfg.working_dir_abs, code_access=False,
+                    member_timeout=member_timeout, registry=registry,
+                    max_synth_chars=cfg.max_synth_chars,
+                    progress=lambda msg: print(f"[council] {msg}", file=sys.stderr),
+                )
+                raw_text, members, run_note = result.final_text, result.members, result.note
+            elif single_agent is not None:
+                # Route through _run_member so the lone agent gets the SAME one-retry
+                # on a transient failure that panel members get (M11).
+                m = _run_member(
+                    single_agent, question, role="panel", context_file=None,
+                    code_dir=None, timeout_seconds=member_timeout, registry=registry,
+                )
+                raw_text, members, run_note = m.answer, [m], "single-agent"
+            else:
+                raise SystemExit(roster_note)
+        except BaseException:
+            registry.cancel_all()
+            raise
 
-    final = _strip_boilerplate(raw_text, cfg.strip_patterns)
-    sources = verify_sources(final, embedded_files, input_files=abs_files)
-    note = " | ".join(x for x in (roster_note, run_note) if x)
-    return AuditResult(final, members, sources, note)
+        final = _strip_boilerplate(raw_text, cfg.strip_patterns)
+        sources = verify_sources(final, embedded_files, input_files=abs_files)
+        note = " | ".join(x for x in (roster_note, run_note) if x)
+        success = True
+        return AuditResult(final, members, sources, note)
+    finally:
+        _restore_handlers(saved_handlers)
+        if success or not (os.path.isdir(results_dir) and os.listdir(results_dir)):
+            # clean success (the printed report has everything) OR nothing was saved
+            # yet -> drop the per-run copies.
+            shutil.rmtree(results_dir, ignore_errors=True)
+        else:
+            # abnormal exit with answers already received -> keep them and say where.
+            print(f"[council] partial answers preserved in {results_dir}", file=sys.stderr)

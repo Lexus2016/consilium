@@ -47,14 +47,45 @@ class MemberResult:
 
 
 class ProcessRegistry:
-    """Tracks live child processes for one HTTP request so they can all be
-    terminated if the client disconnects (otherwise children keep running and
-    keep charging)."""
+    """Tracks live child processes so they can all be terminated if the client
+    disconnects or the run is interrupted (otherwise children keep charging).
 
-    def __init__(self) -> None:
+    Also PERSISTS each member's answer to ``results_dir`` the moment it arrives, so
+    a killed or timed-out council never discards an already-paid consultation."""
+
+    def __init__(self, results_dir: str | None = None) -> None:
         self._procs: set[subprocess.Popen] = set()
         self._lock = threading.Lock()
         self._cancelled = False
+        self._results_dir = results_dir
+        self._n = 0
+
+    @property
+    def results_dir(self) -> str | None:
+        return self._results_dir
+
+    def record(self, result: "MemberResult") -> None:
+        """Write a member's ANSWER to ``results_dir`` immediately, so it survives a
+        later kill/timeout of the whole council. Saves ANY non-empty answer and
+        marks its status — a member that printed output but then exited non-zero
+        (ok=False with text) produced paid content too, and must not be lost.
+        Members with no answer at all are skipped. Best-effort; never breaks a run."""
+        answer = getattr(result, "answer", "") or ""
+        if not self._results_dir or not answer.strip():
+            return
+        with self._lock:
+            self._n += 1
+            n = self._n
+        status = "ok" if getattr(result, "ok", False) else \
+            f"FAILED: {getattr(result, 'error', '') or 'non-zero exit'}"
+        path = os.path.join(self._results_dir, f"{n:02d}-{result.role}-{result.agent}.md")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(f"# {result.role} — {result.agent} "
+                        f"({result.wall_seconds:.0f}s) [{status}]\n\n{answer}\n")
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
 
     def add(self, proc: subprocess.Popen) -> None:
         with self._lock:
@@ -156,9 +187,14 @@ def run_agent(
     cmd += ["--", question]
 
     env = _child_env()
-    # Belt-and-suspenders: consult honors CONSILIUM_TIMEOUT (wraps with timeout),
-    # and we also enforce a Python-side wait timeout below.
-    env["CONSILIUM_TIMEOUT"] = str(timeout_seconds)
+    # Actively REMOVE CONSILIUM_TIMEOUT from the child env — it is often exported in
+    # the parent shell, and merely not setting it is not enough. If `consult` sees
+    # it, it wraps the advisor in the `timeout` binary, which puts the advisor in
+    # its OWN process group; our os.killpg() on the consult session group
+    # (cancel_all, and the Python-side timeout below) would then MISS the advisor
+    # and leave a paid orphan. With no inner timeout the advisor stays in the consult
+    # group, and communicate(timeout) + os.killpg bound AND reap it.
+    env.pop("CONSILIUM_TIMEOUT", None)
 
     start = time.monotonic()
     if registry is not None and registry.cancelled:
@@ -236,7 +272,12 @@ def run_agent(
 # --------------------------------------------------------------------------- #
 
 def _fake_run(agent: str, question: str, *, role: str, review: bool) -> MemberResult:
-    time.sleep(0.2)  # simulate a little work so heartbeats have something to do
+    # COUNCIL_FAKE_DELAY lets a test make a fake member slow enough to interrupt.
+    try:
+        _delay = float(os.environ.get("COUNCIL_FAKE_DELAY", "0.2"))
+    except ValueError:
+        _delay = 0.2
+    time.sleep(_delay)  # simulate a little work so heartbeats have something to do
     short = question.strip().splitlines()[0][:80] if question.strip() else "(empty)"
     if review:
         body = (

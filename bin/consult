@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-VERSION="0.7.0"
+VERSION="0.7.1"
 PROG="consult"
 
 AGENTS="claude agy hermes opencode codex grok pi cursor kilo cline goose kimi"
