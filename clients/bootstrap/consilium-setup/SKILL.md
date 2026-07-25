@@ -26,15 +26,17 @@ command -v consult && consult --list
   to reinstall. Nothing there at all → **Fresh install**.
 - Found, and the user asked to update to the latest code (pull) → **Update**.
 - Found, and the user only asked to re-sync the hub block or skills → no pull
-  needed: `./install.sh --clients` from the clone (see **Diagnostics**).
+  needed: `./install.sh --clients` from the clone (locate it with the
+  `readlink` trick from **Update**; see **Diagnostics**).
 - Found but something is broken → **Diagnostics**.
 
 ## 2. Fresh install
 
-Look for an existing clone first. You only reach this section when `command -v
-consult` failed, so the `readlink` trick from **Update** can't help here —
-check the likely spots (`~/consilium` is the default below) or ask the user
-where they cloned it. If you find a clone, `cd` into it and `git pull`, then
+Look for an existing clone first. You reach this section when `command -v
+consult` failed, or when **Update**'s `--copy` fallback sent you here — either
+way the `readlink` trick from **Update** can't help, so check the likely spots
+(`~/consilium` is the default below) or ask the user where they cloned it. If
+you find a clone, `cd` into it and `git pull`, then
 skip to the `install.sh` line below.
 
 No clone anywhere: clone *outside* the user's project, not into their working
@@ -53,6 +55,10 @@ folder. Then, either way:
 ```sh
 ./install.sh --clients
 ```
+
+If you arrived here from **Update**'s `--copy` fallback (the original install
+was `--copy`), run `./install.sh --copy --clients` instead — `--copy` never
+includes the council (see **Diagnostics**).
 
 `install.sh` symlinks `bin/consult` into `~/.local/bin` (override with
 `CONSILIUM_BIN`); `--clients` also syncs the hub instruction block into the
@@ -115,7 +121,7 @@ Done. From here, how to *use* `consult` is the `consult-peer` skill.
 | `consult: command not found` after install | The bin dir is not on PATH. Add `export PATH="$HOME/.local/bin:$PATH"` to the user's shell profile — write the *resolved* directory (the actual `CONSILIUM_BIN` value if one was set), never the literal `$CONSILIUM_BIN`. Then run the same `export` in your current shell (or call `consult` by full path) and re-verify right away; the profile line covers future shells. If a custom `CONSILIUM_BIN` was used and its value is forgotten: the installer prints the bin dir it used in its `installed: <dir>/consult` line at install time, and the shell profile may already carry a `CONSILIUM_BIN` line — check both. |
 | `install.sh: ... refusing to overwrite` | An unrelated `consult` occupies the target. Remove it by hand or set `CONSILIUM_BIN` to a different bin dir, then re-run `./install.sh --clients`. |
 | `consult council` unavailable | Install `python3`. Also: `--copy` installs never include the council — symlink-install (`./install.sh`) or run it from the repo checkout. |
-| Hub block or skills look stale, `consult` itself works | No pull needed — re-sync only: run `./install.sh --clients` from the clone. |
+| Hub block or skills look stale, `consult` itself works | No pull needed — re-sync only: run `./install.sh --clients` from the clone (locate it with the `readlink` trick from **Update**). |
 | Advisor listed, but calls fail with auth errors | Sign in to that advisor's own CLI; `consult --list` cannot check sign-in. |
 | Native Windows | No shell installer: WSL/Git Bash, or `bin/consult.ps1` per `clients/README.md`. |
 

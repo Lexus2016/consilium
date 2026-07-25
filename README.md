@@ -112,7 +112,7 @@ That's it. You only need the assistants you actually plan to ask.
 Prefer to do it by hand? One command:
 
 ```sh
-./install.sh --clients   # puts `consult` on your PATH and syncs the skill + hub block
+./install.sh --clients   # puts `consult` on your PATH and syncs the skills + hub block
 ```
 
 Then open a fresh session and run `consult --list` to confirm it's there. Already
@@ -121,8 +121,8 @@ and re-syncs everything.
 
 ## Use it — three ways
 
-**Your agent does it on its own.** Once it knows about `consult` (the Claude skill,
-or the hub block in `AGENTS.md` / `GEMINI.md`), it offers a second opinion by itself
+**Your agent does it on its own.** Once it knows about `consult` (the consult-peer
+skill, or the hub block in `AGENTS.md` / `GEMINI.md`), it offers a second opinion by itself
 when it's stuck or about to do something hard to undo. You read the result and
 decide.
 

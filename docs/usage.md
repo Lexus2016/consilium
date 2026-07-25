@@ -8,7 +8,7 @@
 ## Set it up once
 
 ```sh
-./install.sh --clients   # puts `consult` on your PATH and syncs the skill + hub block
+./install.sh --clients   # puts `consult` on your PATH and syncs the skills + hub block
 ```
 
 Open a fresh Claude Code session so it picks up the skill, then check the command

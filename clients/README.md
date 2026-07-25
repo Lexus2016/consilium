@@ -110,8 +110,8 @@ install or update it is:
     ./install.sh --clients
 
 That syncs the block into the agents you already use (codex/opencode/agy), seeds
-`~/AGENTS.md` for hermes, and copies the Claude skill. To paste it by hand instead,
-copy the contents of
+`~/AGENTS.md` for hermes, and copies the consilium skills (consult-peer and
+consilium-setup). To paste it by hand instead, copy the contents of
 [`hub-block.txt`](hub-block.txt) into your agent's instruction file
 (`AGENTS.md`, `GEMINI.md`, …).
 
