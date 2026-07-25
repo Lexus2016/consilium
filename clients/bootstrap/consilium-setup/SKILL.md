@@ -24,11 +24,23 @@ command -v consult && consult --list
 
 ## 2. Fresh install
 
-If the user already has a clone of the repo, use it instead of re-cloning.
+Look for an existing clone first. On a symlink install,
+`readlink "$(command -v consult)"` prints `<repo>/bin/consult`, so the repo is
+two dirs up from that — or the user may just tell you where it is. If you find
+a clone, `cd` into it and `git pull`, then skip to the `install.sh` line below.
+
+No clone anywhere: clone *outside* the user's project, not into their working
+directory —
 
 ```sh
-git clone https://github.com/Lexus2016/consilium
-cd consilium
+git clone https://github.com/Lexus2016/consilium ~/consilium   # unless the user picked a location
+cd ~/consilium
+```
+
+If the target dir already holds a clone, `cd` into it and `git pull` instead of
+cloning. Then, either way:
+
+```sh
 ./install.sh --clients
 ```
 
@@ -45,21 +57,31 @@ Native Windows: there is no shell installer — use WSL / Git Bash for
 
 ## 3. Update
 
-From the existing clone:
+Find the clone first. On a symlink install:
 
 ```sh
-git pull && ./install.sh --clients
+readlink "$(command -v consult)"   # prints <repo>/bin/consult — the repo is two dirs up
 ```
+
+If the user knows where the clone is, use that instead. Then:
+
+```sh
+cd <repo> && git pull && ./install.sh --clients
+```
+
+No clone to be found (`--copy` install, or the repo was deleted) → fall back to
+**Fresh install** above.
 
 ## 4. Verify
 
 ```sh
-consult --list
+consult --list | grep -c installed
 ```
 
-It must list **at least two** agents — consilium only makes sense with one
-agent that asks and a *different* one that answers. Two caveats to tell the
-user:
+Must print **2 or more** — count only the `installed` rows, because `--list`
+also prints `not found` rows for agents that aren't there. consilium only makes
+sense with one agent that asks and a *different* one that answers. Two caveats
+to tell the user:
 
 - `--list` checks *installation* only, not sign-in — a listed advisor may still
   need a login in its own CLI.
@@ -72,12 +94,15 @@ Done. From here, how to *use* `consult` is the `consult-peer` skill.
 
 | Symptom | Action |
 |---|---|
-| `consult: command not found` after install | The bin dir is not on PATH. Add `export PATH="$HOME/.local/bin:$PATH"` (or `"$CONSILIUM_BIN"`) to the user's shell profile, then open a fresh shell and re-verify. |
+| `consult: command not found` after install | The bin dir is not on PATH. Add `export PATH="$HOME/.local/bin:$PATH"` to the user's shell profile — write the *resolved* directory (the actual `CONSILIUM_BIN` value if one was set), never the literal `$CONSILIUM_BIN`. Then run the same `export` in your current shell (or call `consult` by full path) and re-verify right away; the profile line covers future shells. |
 | `install.sh: ... refusing to overwrite` | An unrelated `consult` occupies the target. Remove it by hand or set `CONSILIUM_BIN` to a different bin dir, then re-run `./install.sh --clients`. |
 | `consult council` unavailable | Install `python3`. Also: `--copy` installs never include the council — symlink-install (`./install.sh`) or run it from the repo checkout. |
 | Advisor listed, but calls fail with auth errors | Sign in to that advisor's own CLI; `consult --list` cannot check sign-in. |
 | Native Windows | No shell installer: WSL/Git Bash, or `bin/consult.ps1` per `clients/README.md`. |
 
-Never edit agents' global instruction files (`AGENTS.md`, `GEMINI.md`) by hand —
-that is `install.sh --clients`'s job. For anything beyond setup, point at the
-repo docs: `docs/usage.md` and `docs/consulting-guide.md`.
+Don't hand-write or hand-maintain the hub block in agents' global instruction
+files (`AGENTS.md`, `GEMINI.md`) — keeping it current is `install.sh
+--clients`'s job. But if the installer prints a WARN about unbalanced,
+out-of-order, or legacy markers, follow its own advice: fix or remove the
+markers by hand, then re-run. For anything beyond setup, point at the repo
+docs: `docs/usage.md` and `docs/consulting-guide.md`.

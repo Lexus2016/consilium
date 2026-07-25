@@ -7,8 +7,10 @@
 # copy the file instead.
 #
 # Pass --clients to also sync the consult-peer hub block into the agents you
-# already use (codex / opencode / agy) and copy the Claude skill. This is the
-# one command to run after `git pull` to push a new release everywhere:
+# already use (codex / opencode / agy), seed ~/AGENTS.md for hermes, and copy
+# the consilium skills (consult-peer and consilium-setup) into the agent skills
+# dirs that exist (~/.claude/skills, ~/.agents/skills). This is the one command
+# to run after `git pull` to push a new release everywhere:
 #   git pull && ./install.sh --clients
 #
 # Windows, native PowerShell: there is no shell installer — point your PATH at
@@ -31,7 +33,9 @@ Install the 'consult' command into a bin directory.
 
   --copy      copy the script instead of symlinking (default: symlink)
   --clients   also sync the consult-peer hub block into installed agents
-              (codex/opencode/agy) and copy the Claude skill
+              (codex/opencode/agy), seed ~/AGENTS.md for hermes, and copy
+              the consilium skills (consult-peer, consilium-setup) into the
+              skills dirs that exist (~/.claude/skills, ~/.agents/skills)
 
 env:
   CONSILIUM_BIN   target bin directory (default: ~/.local/bin)
@@ -215,9 +219,11 @@ if [ "$do_clients" -eq 1 ]; then
   setup_src="$repo_dir/clients/bootstrap/consilium-setup"
   for skills_root in "$HOME/.agents/skills" "$HOME/.claude/skills"; do
     if [ -d "$skills_root" ] && [ -f "$setup_src/SKILL.md" ]; then
-      mkdir -p "$skills_root/consilium-setup"
-      cp "$setup_src/SKILL.md" "$skills_root/consilium-setup/SKILL.md"
-      echo "  skill synced:  $skills_root/consilium-setup/SKILL.md"
+      if mkdir -p "$skills_root/consilium-setup" && cp "$setup_src/SKILL.md" "$skills_root/consilium-setup/SKILL.md"; then
+        echo "  skill synced:  $skills_root/consilium-setup/SKILL.md"
+      else
+        echo "  WARN: could not sync consilium-setup into $skills_root (unwritable?) — skipping" >&2
+      fi
     else
       echo "  skip consilium-setup ($skills_root not present or skill missing)"
     fi

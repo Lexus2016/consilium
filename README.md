@@ -109,11 +109,10 @@ Paste this to your assistant (Claude Code, Codex, OpenCode, or Antigravity):
 
 That's it. You only need the assistants you actually plan to ask.
 
-Prefer to do it by hand? Two commands:
+Prefer to do it by hand? One command:
 
 ```sh
-./install.sh                                     # puts `consult` on your PATH
-cp -r clients/claude-code/consult-peer ~/.claude/skills/   # teach Claude to use it
+./install.sh --clients   # puts `consult` on your PATH and syncs the skill + hub block
 ```
 
 Then open a fresh session and run `consult --list` to confirm it's there. Already

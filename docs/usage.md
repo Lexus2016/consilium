@@ -8,8 +8,7 @@
 ## Set it up once
 
 ```sh
-./install.sh                                   # puts `consult` on your PATH
-cp -r clients/claude-code/consult-peer ~/.claude/skills/   # teach Claude to use it
+./install.sh --clients   # puts `consult` on your PATH and syncs the skill + hub block
 ```
 
 Open a fresh Claude Code session so it picks up the skill, then check the command

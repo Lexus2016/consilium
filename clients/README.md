@@ -6,12 +6,11 @@ teach itself when and how to consult a peer, using that agent's own mechanism.
 
 Every agent needs the same two steps.
 
-1. **Install the command.** Run `./install.sh` from the repo root (on native
-   Windows, see [Windows](#windows) below). After that, `consult --list` works in
-   any shell.
+1. **Install the command.** Run `./install.sh --clients` from the repo root (on
+   native Windows, see [Windows](#windows) below) — `--clients` does step 2's
+   sync at the same time. After that, `consult --list` works in any shell.
 2. **Install the guidance.** Drop the **Hub instruction block** (bottom of this
-   file, canonical copy in
-   [`../docs/consulting-guide.md`](../docs/consulting-guide.md)) where your agent
+   file, canonical copy in [`hub-block.txt`](hub-block.txt)) where your agent
    reads its instructions, so it reaches for `consult` on its own.
 
 The guidance is the same everywhere; only its location changes per agent. The full
@@ -122,7 +121,7 @@ high-stakes questions (that mode needs `python3`; core `consult` does not).
 
 ---
 
-## The consilium-setup skill (install / update / repair)
+## The consilium-setup skill (install / update / verify / repair)
 
 [`bootstrap/consilium-setup/`](bootstrap/consilium-setup/) is a
 [SKILL.md](bootstrap/consilium-setup/SKILL.md)-format skill that teaches an
