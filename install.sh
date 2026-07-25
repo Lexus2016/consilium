@@ -35,8 +35,9 @@ Install the 'consult' command into a bin directory.
   --copy      copy the script instead of symlinking (default: symlink)
   --clients   also sync the consult-peer hub block into installed agents
               (codex/opencode/agy), seed ~/AGENTS.md for hermes, and copy
-              the consilium skills: consult-peer into ~/.claude/skills, and
-              consilium-setup into ~/.agents/skills and ~/.claude/skills
+              the consilium skills into the agent skills dirs that exist:
+              consult-peer into ~/.claude/skills, and consilium-setup into
+              ~/.agents/skills and ~/.claude/skills
 
 env:
   CONSILIUM_BIN   target bin directory (default: ~/.local/bin)
@@ -209,7 +210,7 @@ if [ "$do_clients" -eq 1 ]; then
     if [ ! -d "$skill_dir/SKILL.md" ] && mkdir -p "$skill_dir" && cp "$skill_src" "$skill_dir/SKILL.md"; then
       echo "  skill synced:  $skill_dir/SKILL.md"
     else
-      echo "  WARN: could not sync consult-peer into $HOME/.claude/skills (unwritable?) — skipping" >&2
+      echo "  WARN: could not sync consult-peer into $HOME/.claude/skills (unwritable, or a directory named SKILL.md exists?) — skipping" >&2
     fi
   else
     echo "  skip skill (~/.claude/skills not present)"
@@ -225,7 +226,7 @@ if [ "$do_clients" -eq 1 ]; then
       if [ ! -d "$skills_root/consilium-setup/SKILL.md" ] && mkdir -p "$skills_root/consilium-setup" && cp "$setup_src/SKILL.md" "$skills_root/consilium-setup/SKILL.md"; then
         echo "  skill synced:  $skills_root/consilium-setup/SKILL.md"
       else
-        echo "  WARN: could not sync consilium-setup into $skills_root (unwritable?) — skipping" >&2
+        echo "  WARN: could not sync consilium-setup into $skills_root (unwritable, or a directory named SKILL.md exists?) — skipping" >&2
       fi
     else
       echo "  skip consilium-setup ($skills_root not present or skill missing)"

@@ -18,19 +18,24 @@ Repo: https://github.com/Lexus2016/consilium
 command -v consult && consult --list
 ```
 
-- `consult` not found → **Fresh install**.
-- Not found, but the user believes consilium is already installed → almost
-  certainly a PATH problem, not a missing install — go to **Diagnostics**;
-  don't re-clone over an existing install.
-- Found, and the user asked to update or re-sync → **Update**.
+- `consult` not found → look in the usual bin dirs before deciding:
+  `ls -l ~/.local/bin/consult` (and `$CONSILIUM_BIN/consult` if one was set).
+  A valid file or symlink there → a PATH problem, not a missing install — go
+  to **Diagnostics**; don't re-clone over an existing install. A *dangling*
+  symlink (target gone — the clone moved or was deleted) → **Fresh install**
+  to reinstall. Nothing there at all → **Fresh install**.
+- Found, and the user asked to update to the latest code (pull) → **Update**.
+- Found, and the user only asked to re-sync the hub block or skills → no pull
+  needed: `./install.sh --clients` from the clone (see **Diagnostics**).
 - Found but something is broken → **Diagnostics**.
 
 ## 2. Fresh install
 
-Look for an existing clone first. On a symlink install,
-`readlink "$(command -v consult)"` prints `<repo>/bin/consult`, so the repo is
-two dirs up from that — or the user may just tell you where it is. If you find
-a clone, `cd` into it and `git pull`, then skip to the `install.sh` line below.
+Look for an existing clone first. You only reach this section when `command -v
+consult` failed, so the `readlink` trick from **Update** can't help here —
+check the likely spots (`~/consilium` is the default below) or ask the user
+where they cloned it. If you find a clone, `cd` into it and `git pull`, then
+skip to the `install.sh` line below.
 
 No clone anywhere: clone *outside* the user's project, not into their working
 directory —
@@ -68,15 +73,18 @@ Find the clone first. On a symlink install:
 readlink "$(command -v consult)"   # prints <repo>/bin/consult — the repo is two dirs up
 ```
 
-If the user knows where the clone is, use that instead. Then:
+If `readlink` prints nothing, `consult` is not a symlink — see the `--copy`
+note below. If the user knows where the clone is, use that instead. Then:
 
 ```sh
 cd <repo> && git pull && ./install.sh --clients
 ```
 
-If `readlink` shows `consult` is *not* a symlink into a repo, the install used
-`--copy` — keep it a copy, don't let the update silently turn it into a
-symlink: from the clone, `git pull && ./install.sh --copy --clients` instead.
+If `readlink` shows `consult` is *not* a symlink into a repo, the install is
+*probably* a `--copy` one — keep it a copy, don't let the update silently turn
+it into a symlink: from the clone, `git pull && ./install.sh --copy --clients`
+instead. If the installer refuses to overwrite, the `consult` on PATH isn't
+consilium's at all — see the "refusing to overwrite" row in **Diagnostics**.
 (The council stays unavailable under `--copy` — see **Diagnostics**.)
 
 No clone to be found (`--copy` install, or the repo was deleted) → fall back to

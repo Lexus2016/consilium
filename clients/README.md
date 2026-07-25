@@ -9,9 +9,9 @@ Every agent needs the same two steps.
 1. **Install the command.** Run `./install.sh --clients` from the repo root (on
    native Windows, see [Windows](#windows) below) — `--clients` does step 2's
    sync at the same time. After that, `consult --list` works in any shell.
-2. **Install the guidance.** Drop the **Hub instruction block** (bottom of this
-   file, canonical copy in [`hub-block.txt`](hub-block.txt)) where your agent
-   reads its instructions, so it reaches for `consult` on its own.
+2. **Install the guidance.** Drop the **Hub instruction block** (canonical copy
+   in [`hub-block.txt`](hub-block.txt)) where your agent reads its instructions,
+   so it reaches for `consult` on its own.
 
 The guidance is the same everywhere; only its location changes per agent. The full
 playbook (when to consult, how to build context, how to read the reply) lives in
