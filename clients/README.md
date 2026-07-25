@@ -119,3 +119,18 @@ copy the contents of
 The block carries no agent list — `consult --list` is the runtime source of truth.
 It also points agents at `consult council` — the multi-agent code-audit mode — for
 high-stakes questions (that mode needs `python3`; core `consult` does not).
+
+---
+
+## The consilium-setup skill (install / update / repair)
+
+[`bootstrap/consilium-setup/`](bootstrap/consilium-setup/) is a
+[SKILL.md](bootstrap/consilium-setup/SKILL.md)-format skill that teaches an
+agent how to **install, update, verify, and repair** consilium itself — as
+opposed to `consult-peer`, which covers day-to-day *use* of `consult`.
+
+`./install.sh --clients` copies it into `~/.agents/skills/` (Kimi Code and
+compatible agents) and `~/.claude/skills/` (Claude Code) when those directories
+already exist. Hand it to any agent that supports the SKILL.md format when you
+want consilium set up on a new machine — the agent clones, installs, syncs the
+hub block, and verifies with `consult --list` on its own.
