@@ -107,6 +107,7 @@ Done. From here, how to *use* `consult` is the `consult-peer` skill.
 | `consult: command not found` after install | The bin dir is not on PATH. Add `export PATH="$HOME/.local/bin:$PATH"` to the user's shell profile — write the *resolved* directory (the actual `CONSILIUM_BIN` value if one was set), never the literal `$CONSILIUM_BIN`. Then run the same `export` in your current shell (or call `consult` by full path) and re-verify right away; the profile line covers future shells. If a custom `CONSILIUM_BIN` was used and its value is forgotten: the installer prints the bin dir it used in its `installed: <dir>/consult` line at install time, and the shell profile may already carry a `CONSILIUM_BIN` line — check both. |
 | `install.sh: ... refusing to overwrite` | An unrelated `consult` occupies the target. Remove it by hand or set `CONSILIUM_BIN` to a different bin dir, then re-run `./install.sh --clients`. |
 | `consult council` unavailable | Install `python3`. Also: `--copy` installs never include the council — symlink-install (`./install.sh`) or run it from the repo checkout. |
+| Hub block or skills look stale, `consult` itself works | No pull needed — re-sync only: run `./install.sh --clients` from the clone. |
 | Advisor listed, but calls fail with auth errors | Sign in to that advisor's own CLI; `consult --list` cannot check sign-in. |
 | Native Windows | No shell installer: WSL/Git Bash, or `bin/consult.ps1` per `clients/README.md`. |
 
