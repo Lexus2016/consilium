@@ -8,9 +8,10 @@
 #
 # Pass --clients to also sync the consult-peer hub block into the agents you
 # already use (codex / opencode / agy), seed ~/AGENTS.md for hermes, and copy
-# the consilium skills (consult-peer and consilium-setup) into the agent skills
-# dirs that exist (~/.claude/skills, ~/.agents/skills). This is the one command
-# to run after `git pull` to push a new release everywhere:
+# the consilium skills into the agent skills dirs that exist: consult-peer
+# into ~/.claude/skills, and consilium-setup into both ~/.agents/skills and
+# ~/.claude/skills. This is the one command to run after `git pull` to push a
+# new release everywhere:
 #   git pull && ./install.sh --clients
 #
 # Windows, native PowerShell: there is no shell installer — point your PATH at
@@ -34,8 +35,8 @@ Install the 'consult' command into a bin directory.
   --copy      copy the script instead of symlinking (default: symlink)
   --clients   also sync the consult-peer hub block into installed agents
               (codex/opencode/agy), seed ~/AGENTS.md for hermes, and copy
-              the consilium skills (consult-peer, consilium-setup) into the
-              skills dirs that exist (~/.claude/skills, ~/.agents/skills)
+              the consilium skills: consult-peer into ~/.claude/skills, and
+              consilium-setup into ~/.agents/skills and ~/.claude/skills
 
 env:
   CONSILIUM_BIN   target bin directory (default: ~/.local/bin)
@@ -205,9 +206,11 @@ if [ "$do_clients" -eq 1 ]; then
   skill_src="$repo_dir/clients/claude-code/consult-peer/SKILL.md"
   skill_dir="$HOME/.claude/skills/consult-peer"
   if [ -d "$HOME/.claude/skills" ] && [ -f "$skill_src" ]; then
-    mkdir -p "$skill_dir"
-    cp "$skill_src" "$skill_dir/SKILL.md"
-    echo "  skill synced:  $skill_dir/SKILL.md"
+    if [ ! -d "$skill_dir/SKILL.md" ] && mkdir -p "$skill_dir" && cp "$skill_src" "$skill_dir/SKILL.md"; then
+      echo "  skill synced:  $skill_dir/SKILL.md"
+    else
+      echo "  WARN: could not sync consult-peer into $HOME/.claude/skills (unwritable?) — skipping" >&2
+    fi
   else
     echo "  skip skill (~/.claude/skills not present)"
   fi
@@ -219,7 +222,7 @@ if [ "$do_clients" -eq 1 ]; then
   setup_src="$repo_dir/clients/bootstrap/consilium-setup"
   for skills_root in "$HOME/.agents/skills" "$HOME/.claude/skills"; do
     if [ -d "$skills_root" ] && [ -f "$setup_src/SKILL.md" ]; then
-      if mkdir -p "$skills_root/consilium-setup" && cp "$setup_src/SKILL.md" "$skills_root/consilium-setup/SKILL.md"; then
+      if [ ! -d "$skills_root/consilium-setup/SKILL.md" ] && mkdir -p "$skills_root/consilium-setup" && cp "$setup_src/SKILL.md" "$skills_root/consilium-setup/SKILL.md"; then
         echo "  skill synced:  $skills_root/consilium-setup/SKILL.md"
       else
         echo "  WARN: could not sync consilium-setup into $skills_root (unwritable?) — skipping" >&2

@@ -19,6 +19,9 @@ command -v consult && consult --list
 ```
 
 - `consult` not found → **Fresh install**.
+- Not found, but the user believes consilium is already installed → almost
+  certainly a PATH problem, not a missing install — go to **Diagnostics**;
+  don't re-clone over an existing install.
 - Found, and the user asked to update or re-sync → **Update**.
 - Found but something is broken → **Diagnostics**.
 
@@ -38,7 +41,9 @@ cd ~/consilium
 ```
 
 If the target dir already holds a clone, `cd` into it and `git pull` instead of
-cloning. Then, either way:
+cloning. If it exists but is not a git clone of consilium (no `.git`, or a
+different project), pick a different directory — never `git pull` a stranger's
+folder. Then, either way:
 
 ```sh
 ./install.sh --clients
@@ -69,6 +74,11 @@ If the user knows where the clone is, use that instead. Then:
 cd <repo> && git pull && ./install.sh --clients
 ```
 
+If `readlink` shows `consult` is *not* a symlink into a repo, the install used
+`--copy` — keep it a copy, don't let the update silently turn it into a
+symlink: from the clone, `git pull && ./install.sh --copy --clients` instead.
+(The council stays unavailable under `--copy` — see **Diagnostics**.)
+
 No clone to be found (`--copy` install, or the repo was deleted) → fall back to
 **Fresh install** above.
 
@@ -94,7 +104,7 @@ Done. From here, how to *use* `consult` is the `consult-peer` skill.
 
 | Symptom | Action |
 |---|---|
-| `consult: command not found` after install | The bin dir is not on PATH. Add `export PATH="$HOME/.local/bin:$PATH"` to the user's shell profile — write the *resolved* directory (the actual `CONSILIUM_BIN` value if one was set), never the literal `$CONSILIUM_BIN`. Then run the same `export` in your current shell (or call `consult` by full path) and re-verify right away; the profile line covers future shells. |
+| `consult: command not found` after install | The bin dir is not on PATH. Add `export PATH="$HOME/.local/bin:$PATH"` to the user's shell profile — write the *resolved* directory (the actual `CONSILIUM_BIN` value if one was set), never the literal `$CONSILIUM_BIN`. Then run the same `export` in your current shell (or call `consult` by full path) and re-verify right away; the profile line covers future shells. If a custom `CONSILIUM_BIN` was used and its value is forgotten: the installer prints the bin dir it used in its `installed: <dir>/consult` line at install time, and the shell profile may already carry a `CONSILIUM_BIN` line — check both. |
 | `install.sh: ... refusing to overwrite` | An unrelated `consult` occupies the target. Remove it by hand or set `CONSILIUM_BIN` to a different bin dir, then re-run `./install.sh --clients`. |
 | `consult council` unavailable | Install `python3`. Also: `--copy` installs never include the council — symlink-install (`./install.sh`) or run it from the repo checkout. |
 | Advisor listed, but calls fail with auth errors | Sign in to that advisor's own CLI; `consult --list` cannot check sign-in. |
