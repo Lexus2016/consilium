@@ -207,6 +207,21 @@ if [ "$do_clients" -eq 1 ]; then
   else
     echo "  skip skill (~/.claude/skills not present)"
   fi
+
+  # consilium-setup bootstrap skill: sync into every skills root the user
+  # already has (~/.agents/skills for Kimi Code and compatible agents,
+  # ~/.claude/skills for Claude Code). Never creates an agent's skills root —
+  # only copies into one that already exists.
+  setup_src="$repo_dir/clients/bootstrap/consilium-setup"
+  for skills_root in "$HOME/.agents/skills" "$HOME/.claude/skills"; do
+    if [ -d "$skills_root" ] && [ -f "$setup_src/SKILL.md" ]; then
+      mkdir -p "$skills_root/consilium-setup"
+      cp "$setup_src/SKILL.md" "$skills_root/consilium-setup/SKILL.md"
+      echo "  skill synced:  $skills_root/consilium-setup/SKILL.md"
+    else
+      echo "  skip consilium-setup ($skills_root not present or skill missing)"
+    fi
+  done
 fi
 
 echo
