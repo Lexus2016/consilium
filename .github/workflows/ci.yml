@@ -24,3 +24,23 @@ jobs:
       - run: bash -n bin/consult
       - run: bash -n install.sh
       - run: bash -n clients/claude-code/hooks/consult-nudge.sh
+
+  powershell:
+    # bin/consult.ps1 is the native Windows port and carries the same advisor
+    # write-stops as bin/consult. It drifted once — it sat on the pre-hardening
+    # flags while the docs promised the enforcement — so it is parsed here on
+    # every push. The GitHub ubuntu runner ships PowerShell, no install needed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse consult.ps1
+        shell: pwsh
+        run: |
+          $errs = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'bin/consult.ps1'), [ref]$null, [ref]$errs) | Out-Null
+          if ($errs) {
+            $errs | ForEach-Object { Write-Output "$($_.Extent.StartLineNumber): $($_.Message)" }
+            throw "consult.ps1 has $($errs.Count) parse error(s)"
+          }
+          Write-Output 'consult.ps1 parses cleanly'
