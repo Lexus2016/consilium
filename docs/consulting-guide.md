@@ -137,12 +137,17 @@ It never edits files; you apply the fixes. Needs `python3` (core `consult` does 
 What comes back is one opinion. Weigh it:
 
 - The advisor is meant to **advise, not act**. It returns text, and every edit
-  stays with you. How firmly "advise only" is *enforced* varies by advisor, though:
-  `codex` is sandboxed read-only; `cline`/`goose` are forced into an approval gate
-  (`--auto-approve false`, `GOOSE_MODE=approve`); `claude`/`kimi`/`kilo`/`cursor`
-  fall back to your own permission config; `pi` has no gate at all (the preamble
-  only). consilium's own flags never grant permissions — but `--raw`/`--model` pass
-  caller-supplied tokens through, so those are your responsibility.
+  stays with you. Since v0.8.0 that is *enforced* per advisor by a real mechanism —
+  `codex` sandboxed read-only, `cursor` in its read-only `ask` mode, `opencode` in
+  its read-only `plan` agent, `hermes` on a toolset list without file or terminal
+  tools, `grok` with explicit deny rules, `claude` with a consilium-owned deny list,
+  `agy` with headless auto-denied tools — and all seven were checked with a
+  write-bait (asked outright to create a file, preamble removed) that none passed.
+  `pi`, `kilo`, `cline` and `kimi` are unverified; treat them as untested.
+  Do not lean on the closed stdin: before v0.8.0 five of seven advisors wrote to
+  the tree despite it, because nothing ever asked them for approval. consilium's
+  own flags never grant permissions — but `--raw`/`--model` pass caller-supplied
+  tokens through, so those are your responsibility.
 - If it disagrees with you, decide on the merits. Don't apply a suggestion you
   can't justify yourself.
 - If it agrees, that's signal but not proof. Two models can share a blind spot.

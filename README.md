@@ -222,15 +222,18 @@ visible, findings checked against the real code).
 
 ## Good to know
 
-- The other AI advises, it doesn't act — but how firmly that's *enforced* varies by
-  advisor. `codex` is hard-sandboxed (`--sandbox read-only`); `cline` and `goose` are
-  forced into an approval gate (`--auto-approve false`, `GOOSE_MODE=approve`) that the
-  closed stdin then denies; `claude`, `kimi`, `kilo` and `cursor` fall back to your
-  own permission config; `pi` has no gate at all, so keep sensitive files out of its
-  working folder. consilium's *own* flags never grant permissions — but `--raw` sends
-  your question to the advisor verbatim and `--model` forwards its value as a token (a
-  value beginning with `-` is rejected), so those two are your responsibility. Either
-  way, your edits stay yours.
+- The other AI advises, it doesn't act — and since v0.8.0 that is *enforced* by a
+  real mechanism per advisor, not just asked for in the prompt. `codex` is
+  hard-sandboxed (`--sandbox read-only`), `cursor` runs its read-only `ask` mode,
+  `opencode` its read-only `plan` agent, `hermes` gets a toolset list with no file
+  or terminal tools, `grok` gets explicit deny rules, `claude` a consilium-owned
+  deny list; `agy`'s tools are auto-denied headless. All seven were checked by
+  asking them outright to create a file, with the "advice only" preamble removed —
+  none did. `pi`, `kilo`, `cline` and `kimi` have not been checked that way, so
+  keep sensitive files out of their working folder. consilium's *own* flags never
+  grant permissions — but `--raw` sends your question to the advisor verbatim and
+  `--model` forwards its value as a token (a value beginning with `-` is
+  rejected), so those two are your responsibility. Either way, your edits stay yours.
 - The assistants you want to ask have to be installed and signed in first.
   `consult --list` shows which are *installed* — it can't check sign-in, so a listed
   agent may still need a login.

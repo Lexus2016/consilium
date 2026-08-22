@@ -71,6 +71,21 @@ def _dedup_by_provider(agents: list[str]) -> list[str]:
     return out
 
 
+def _provider_verified_first(agents: list[str]) -> list[str]:
+    """Stable-sort so agents whose provider is PINNED by the CLI come before
+    model-agnostic front-ends.
+
+    A panel is only as independent as its providers are distinct, and for a
+    MODEL_CONFIGURABLE agent we cannot verify the provider at all — the roster
+    already has to disclose that as best-effort. Taking those agents FIRST while
+    a verified-provider agent sits unused (measured: a 2-seat panel picked
+    `opencode`, whose provider the map cannot pin, and left `codex` out) is the
+    wrong trade. Preference only: an unverifiable agent is still used once the
+    verified ones run out, so a small install keeps a full panel.
+    """
+    return sorted(agents, key=lambda a: a in MODEL_CONFIGURABLE_AGENTS)
+
+
 def resolve_roster(
     policy: Profile, available: list[str]
 ) -> tuple[Profile | None, str | None, str]:
@@ -90,7 +105,7 @@ def resolve_roster(
         if policy.code_access
         else list(available)
     )
-    diverse = _dedup_by_provider(pool)
+    diverse = _dedup_by_provider(_provider_verified_first(pool))
 
     if not diverse:
         return None, None, (

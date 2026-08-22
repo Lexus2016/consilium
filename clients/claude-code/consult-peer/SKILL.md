@@ -87,13 +87,22 @@ fixes. Needs `python3` (the core `consult` stays a zero-dependency shell tool).
 
 ## Safety
 
-The advisor is meant to advise, not act, but how firmly that is enforced varies:
-`codex` runs hard-sandboxed under `--sandbox read-only`; `cline`/`goose` are forced
-into an approval gate (`--auto-approve false`, `GOOSE_MODE=approve`) the closed stdin
-denies; `claude`/`kimi`/`kilo`/`cursor` fall back to your own permission config; `pi`
-has no gate at all (the preamble only). consilium's own flags never grant permissions,
-but `--raw`/`--model` pass caller-supplied tokens through. Strip
-secrets from any context file or piped input before passing it — the advisor is
-another process, often another provider. Bound a call with `CONSILIUM_TIMEOUT`.
+The advisor is meant to advise, not act. As of v0.8.0 that is *enforced* per CLI,
+not merely asked for: `codex` runs hard-sandboxed under `--sandbox read-only`;
+`cursor` runs in its read-only `--mode ask`; `opencode` runs its read-only `plan`
+agent; `hermes` gets a toolset list with no file or terminal tools; `grok` gets
+`--deny Write/Edit/Bash`; `claude` gets a consilium-owned deny list; `agy`'s tools
+are auto-denied headless. All seven were verified against a write-bait — an
+advisor asked outright to create a file, with the advice-only preamble removed —
+and none touched the tree. `pi`, `kilo`, `cline` and `kimi` are NOT verified this
+way; treat them as untested and keep sensitive files out of their working folder.
+
+Do not assume the closed stdin protects you: before v0.8.0 five of seven advisors
+wrote to the tree despite it, because nothing ever asked them for approval.
+
+consilium's own flags never grant permissions, but `--raw`/`--model` pass
+caller-supplied tokens through. Strip secrets from any context file or piped input
+before passing it — the advisor is another process, often another provider. Bound
+a call with `CONSILIUM_TIMEOUT`.
 
 The full playbook lives in the project's `docs/consulting-guide.md`.

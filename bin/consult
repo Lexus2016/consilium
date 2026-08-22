@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-VERSION="0.7.2"
+VERSION="0.8.0"
 PROG="consult"
 
 AGENTS="claude agy hermes opencode codex grok pi cursor kilo cline goose kimi"
@@ -74,6 +74,19 @@ env:
   CONSILIUM_RETRY_EMPTY  retry an advisor that exits 0 with a blank answer, up to
                      N times (default: 1; 0 = never). agy/grok are agentic CLIs
                      whose headless turn occasionally ends with no text.
+
+  advisor isolation — each points an advisor at a clean, rules-free home so it
+  answers as an independent peer instead of inheriting THIS machine's agent
+  instructions and MCP servers. Created on first use; auth is symlinked in.
+  CONSILIUM_AGY_DIR      agy    (default: ~/.consilium/agy-clean)
+  CONSILIUM_CODEX_DIR    codex  (default: ~/.consilium/codex-clean)
+  CONSILIUM_OPENCODE_DIR opencode XDG_CONFIG_HOME (default: ~/.consilium/opencode-clean)
+  CONSILIUM_CLAUDE_SETTINGS  claude deny list (default: ~/.consilium/claude-advisor.json)
+  CONSILIUM_HERMES_TOOLSETS  hermes toolsets to enable (default: web). Adding
+                     'file', 'terminal' or 'code_execution' RESTORES its ability
+                     to write to your tree — see docs/architecture.md.
+  CONSILIUM_OPENCODE_AGENT   opencode agent (default: plan, its read-only one).
+                     Setting this to 'build' RESTORES its ability to write.
 
 examples:
   $PROG codex -- "Is a read-only sandbox enough to make a consultant safe?"
@@ -425,7 +438,43 @@ fi
 cmd=("$(agent_bin "$agent")")
 case "$agent" in
   claude)
-    cmd+=(-p)
+    # Two problems, both MEASURED, both fixed here.
+    #
+    # 1. Pollution: `claude -p` loads this machine's ~/.claude/CLAUDE.md, so the
+    #    "independent" advisor ran the HUB's own instructions (its answers came
+    #    back carrying the user's activation token and calling the user's MCP
+    #    memory tools). `--setting-sources ""` loads no user/project/local
+    #    settings and the pollution disappears (verified).
+    # 2. Writes: a plain `claude -p` ADVISOR ACTUALLY WROTE a file into the
+    #    working tree in a write-bait test — the closed stdin did NOT stop it.
+    #    `--setting-sources ""` alone would make that worse, because it also
+    #    drops any permissions.deny the user had. So the deny list is restored
+    #    explicitly from a consilium-owned settings file (created lazily below).
+    #    Re-verified with the bait: no file written, prompt still answered.
+    #
+    # NOT `--disallowedTools`: it is VARIADIC and swallows the following prompt
+    # ("Permission deny rule \"Reply\" matches no known tool"), which silently
+    # turns the consultation into a no-op. The settings file has no such trap.
+    _claude_settings="${CONSILIUM_CLAUDE_SETTINGS:-$HOME/.consilium/claude-advisor.json}"
+    if [ ! -f "$_claude_settings" ]; then
+      ( umask 077; mkdir -p "$(dirname "$_claude_settings")"
+        printf '%s\n' '{ "permissions": { "deny": ["Edit", "Write", "NotebookEdit", "Bash", "Task"] } }' \
+          > "$_claude_settings" ) 2>/dev/null || true
+    fi
+    cmd+=(-p --setting-sources "")
+    if [ -f "$_claude_settings" ]; then
+      cmd+=(--settings "$_claude_settings")
+    else
+      # FAIL CLOSED. Silently dropping --settings here would leave
+      # `--setting-sources ""` on its own, which loads NO deny rules at all —
+      # strictly more permissive than an untouched claude, and claude was one of
+      # the five advisors measured writing to the tree. Fall back to the
+      # command-line deny list instead. It must come BEFORE a single-value flag
+      # (--setting-sources) because --disallowedTools is variadic and would
+      # otherwise swallow the prompt.
+      warn "claude: could not create $_claude_settings; falling back to command-line deny flags"
+      cmd=("$(agent_bin "$agent")" -p --disallowedTools "Edit,Write,NotebookEdit,Bash,Task" --setting-sources "")
+    fi
     [ "$do_continue" -eq 1 ] && cmd+=(-c)
     [ -n "$model" ] && cmd+=(--model "$model")
     [ -n "$code_dir" ] && cmd+=(--add-dir "$code_dir")
@@ -465,21 +514,99 @@ case "$agent" in
   hermes)
     # Nous Research Hermes Agent: one-shot via `hermes chat -q "<prompt>"`.
     # All flags precede -q so the prompt is consumed as -q's value.
-    cmd+=(chat)
+    #
+    # Three measured defects, fixed by the three flags below.
+    # -Q            hermes printed its banner, a VERBATIM ECHO OF THE WHOLE PROMPT,
+    #               an ASCII answer box and session-resume hints to STDOUT — which
+    #               consult records as "the answer". -Q leaves only the answer.
+    # --ignore-rules  skips auto-injection of AGENTS.md / SOUL.md / .cursorrules /
+    #               memory, so the advisor does not inherit the hub's instructions.
+    # -t web        hermes ACTUALLY WROTE a file into the tree in a write-bait test
+    #               (closed stdin did not stop it: nothing ever asked). -t replaces
+    #               the enabled toolset list, so dropping `file`, `terminal` and
+    #               `code_execution` removes the write tools outright. Re-verified
+    #               with the bait: no file written, answer still correct.
+    # NOT --ignore-user-config / --safe-mode: measured to BREAK quiet mode (it
+    # dumps a raw reasoning block to stdout). NOT --source tool: unproven output
+    # contract, and two reviewers flagged it as a silent-empty / auto-approve risk.
+    cmd+=(chat -Q --ignore-rules -t "${CONSILIUM_HERMES_TOOLSETS:-web}")
     [ -n "$model" ] && cmd+=(--model "$model")
     [ "$do_continue" -eq 1 ] && cmd+=(-c)
-    [ -n "$code_dir" ] && warn "hermes: --code is not supported (no --add-dir flag); ignoring"
+    [ -n "$code_dir" ] && warn "hermes: --code is deliberately not wired — its write tools are only held back by the '-t' toolset list, which is not a sandbox; embed the slice via --context or a pipe instead"
     cmd+=(-q "$prompt")
     ;;
   opencode)
-    cmd+=(run)
+    # Two measured defects.
+    #
+    # 1. Writes: a plain `opencode run` ADVISOR ACTUALLY WROTE a file into the
+    #    working tree in a write-bait test. opencode's default `build` agent
+    #    executes tool calls without ever prompting, so the closed stdin never
+    #    fires. `--agent plan` is opencode's built-in read-only agent; re-verified
+    #    with the bait: no file written, answer still correct.
+    # 2. Pollution: ~/.config/opencode/AGENTS.md is a copy of this machine's
+    #    global CLAUDE.md, so the advisor answered as the HUB (activation token,
+    #    the user's MCP memory tools). Auth lives under XDG_DATA_HOME
+    #    (~/.local/share/opencode/auth.json) while that AGENTS.md lives under
+    #    XDG_CONFIG_HOME, so pointing ONLY XDG_CONFIG_HOME at a clean dir that
+    #    symlinks opencode.json (provider/model config — the user runs local
+    #    proxy baseURLs, so it must survive) but deliberately NOT AGENTS.md keeps
+    #    login working and removes the pollution. Verified.
+    _oc_clean="${CONSILIUM_OPENCODE_DIR:-$HOME/.consilium/opencode-clean}"
+    if [ ! -e "$_oc_clean/opencode/opencode.json" ]; then
+      mkdir -p "$_oc_clean/opencode"
+      for _f in opencode.json node_modules package.json; do
+        ln -sf "$HOME/.config/opencode/$_f" "$_oc_clean/opencode/$_f" 2>/dev/null || true
+      done
+    fi
+    export XDG_CONFIG_HOME="$_oc_clean"
+    cmd+=(run --agent "${CONSILIUM_OPENCODE_AGENT:-plan}")
     [ "$do_continue" -eq 1 ] && cmd+=(-c)
     [ -n "$model" ] && cmd+=(-m "$model")
-    [ -n "$code_dir" ] && warn "opencode: --code is not wired in the dispatch table; ignoring"
+    # `--dir DIR` exists and works, but is deliberately NOT wired: the only thing
+    # holding opencode back from writing is the `plan` agent's tool list, which is
+    # not a sandbox. Pass the slice via --context or a pipe instead.
+    [ -n "$code_dir" ] && warn "opencode: --code is deliberately not wired (its write-stop is the 'plan' agent's tool list, not a sandbox); use --context or a pipe"
     cmd+=("$prompt")
     ;;
   codex)
-    cmd+=(exec --sandbox read-only)
+    # codex is the ONLY advisor whose write-stop is an OS-level sandbox rather
+    # than a tool list, so `--sandbox read-only` stays the primary guarantee (it
+    # passed the write-bait test untouched, before any of the hardening below).
+    #
+    # --skip-git-repo-check fixes a SILENT, TOTAL failure: `codex exec` aborts with
+    # "Not inside a trusted directory and --skip-git-repo-check was not specified"
+    # whenever cwd is not a git repo. council spawns every member with
+    # cwd=~/.consilium/council-scratch (empty, non-git), so the OpenAI member
+    # produced an empty answer in EVERY council run and was silently dropped from
+    # the panel. This flag skips a trust check only; it does not touch the sandbox.
+    #
+    # CODEX_HOME: ~/.codex/AGENTS.md carries this machine's global agent rules, and
+    # ~/.codex/config.toml wires the hub's MCP servers — an advisor running those is
+    # not independent. The clean home therefore symlinks auth.json (login) but takes
+    # a FILTERED COPY of config.toml with every [mcp_servers.*] table stripped: the
+    # provider settings the user needs (local proxy baseURLs) survive, the hub's MCP
+    # surface does not. Regenerated whenever the real config is newer, so a user
+    # editing their config does not silently keep running a stale advisor copy.
+    # Same intent as agy's --gemini_dir.
+    _codex_clean="${CONSILIUM_CODEX_DIR:-$HOME/.consilium/codex-clean}"
+    if [ -r "$HOME/.codex/auth.json" ]; then
+      mkdir -p "$_codex_clean" 2>/dev/null || true
+      ln -sf "$HOME/.codex/auth.json" "$_codex_clean/auth.json" 2>/dev/null || true
+      if [ -r "$HOME/.codex/config.toml" ] && \
+         { [ ! -f "$_codex_clean/config.toml" ] || [ "$HOME/.codex/config.toml" -nt "$_codex_clean/config.toml" ]; }; then
+        # A [mcp_servers.x] table runs until the next top-level table header.
+        awk '/^[[:space:]]*\[mcp_servers[.\]]/ { skip=1; next }
+             /^[[:space:]]*\[/ { skip=0 }
+             !skip' "$HOME/.codex/config.toml" > "$_codex_clean/config.toml.tmp" 2>/dev/null \
+          && mv "$_codex_clean/config.toml.tmp" "$_codex_clean/config.toml" 2>/dev/null || true
+      fi
+    fi
+    if [ -e "$_codex_clean/auth.json" ]; then
+      export CODEX_HOME="$_codex_clean"
+    else
+      warn "codex: could not build the clean home at $_codex_clean; the advisor will inherit ~/.codex (its AGENTS.md and MCP servers), so treat this answer as less independent"
+    fi
+    cmd+=(exec --sandbox read-only --skip-git-repo-check)
     [ "$do_continue" -eq 1 ] && warn "codex: --continue is not supported in exec mode; ignoring"
     [ -n "$model" ] && cmd+=(-m "$model")
     [ -n "$code_dir" ] && cmd+=(-C "$code_dir")
@@ -489,6 +616,13 @@ case "$agent" in
     # xAI Grok CLI (superagent-ai/grok-cli): `-p`/`--single` takes the prompt as
     # its value, prints the answer to stdout, and exits (default output is plain
     # text). Flags verified against `grok --help`.
+    #
+    # A plain `grok -p` ADVISOR ACTUALLY WROTE a file into the working tree in a
+    # write-bait test — the closed stdin did not stop it. `--deny RULE` (its
+    # Claude-style permission deny flag, each occurrence taking exactly one value,
+    # so it cannot swallow the prompt the way a variadic flag would) removes the
+    # write path. Re-verified with the bait: no file written, answer still correct.
+    cmd+=(--deny Write --deny Edit --deny Bash)
     [ -n "$model" ] && cmd+=(-m "$model")
     [ "$do_continue" -eq 1 ] && cmd+=(-c)
     [ -n "$code_dir" ] && cmd+=(--cwd "$code_dir")
@@ -508,13 +642,23 @@ case "$agent" in
     # Cursor CLI (binary `cursor-agent`, or a bare `agent` alias — see agent_bin):
     # `-p` is print mode but its output DEFAULTS to stream-json, so pin
     # `--output-format text` for a clean answer. Continue is `--resume` (there is
-    # no --continue). Flags verified against `cursor-agent --help`. Advice-safe:
-    # `-f`/--force is never passed, so a write/bash tool needs an approval the
-    # closed stdin can't give.
-    cmd+=(-p --output-format text)
+    # no --continue). Flags verified against `cursor-agent --help`.
+    #
+    # --trust    WITHOUT it cursor aborts with "Workspace Trust Required" and
+    #            prints NOTHING — cursor had never worked as an advisor at all.
+    #            It answers the trust prompt only; it is not --force/--yolo.
+    # --mode ask cursor's own help says `-p` "has access to all tools, including
+    #            write and shell", and a plain `-p --trust` ADVISOR ACTUALLY WROTE
+    #            a file into the tree in a write-bait test. `ask` is cursor's
+    #            read-only Q&A mode. Re-verified with the bait: no file written.
+    # --sandbox enabled  second belt under `ask`, for any shell tool left
+    #            registered. Note it still permits writes INSIDE a trusted
+    #            workspace, so it is a belt, not the guarantee.
+    # -f/--force/--yolo are never passed.
+    cmd+=(-p --output-format text --trust --mode ask --sandbox enabled)
     [ -n "$model" ] && cmd+=(--model "$model")
     [ "$do_continue" -eq 1 ] && cmd+=(--resume)
-    [ -n "$code_dir" ] && warn "cursor: no working-directory flag; --code ignored (cd into the dir before consulting)."
+    [ -n "$code_dir" ] && warn "cursor: --code is deliberately not wired — --add-dir exists but also loads that repo's .cursor rules/MCP into the advisor; use --context or a pipe."
     cmd+=("$prompt")
     ;;
   kilo)

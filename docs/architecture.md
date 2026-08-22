@@ -170,22 +170,50 @@ differs per agent, so be honest about it:
 
 | Agent | What keeps it from editing files |
 |---|---|
-| codex | enforced: runs under `--sandbox read-only` |
-| claude | does not edit in `-p` answer mode without granted permission |
-| agy | does not edit in `-p` answer mode without granted permission (its `--sandbox` flag stalls headless calls, so we don't pass it) |
-| opencode | no read-only flag exists; relies on its default behaviour + the preamble |
-| grok | no read-only flag; default permission mode still gates writes + the preamble |
+| codex | enforced: runs under `--sandbox read-only` — the only OS-level stop here, and the only one that passed the write-bait untouched before v0.8.0 |
+| claude | `--setting-sources ""` (also strips the hub's CLAUDE.md) plus a consilium-owned `--settings` deny list for `Edit`/`Write`/`NotebookEdit`/`Bash`/`Task`. NOT `--disallowedTools`: it is variadic and swallows the prompt |
+| agy | its file/command tools are auto-denied in headless mode, so it cannot act; verified by the bait |
+| opencode | `--agent plan`, opencode's built-in read-only agent. Its default `build` agent runs tools unattended and DID write in the bait |
+| hermes | `-t web` replaces the enabled toolset list, dropping `file`, `terminal` and `code_execution`. It has no approval gate at all and DID write in the bait |
+| grok | `--deny Write --deny Edit --deny Bash` (single-value flags, so they cannot swallow the prompt). Its default permission mode did NOT gate writes in the bait |
 | pi | no built-in permission gate — relies on the preamble only; treat as the WEAKEST, avoid a writable cwd with sensitive files |
-| cursor | `-p` has write/bash tools, but `-f`/`--force` is never passed, so a write needs an approval the closed stdin denies |
-| kilo | `--auto` is never passed, so a write needs an approval the closed stdin can't give (a user's own kilo config could still relax this) |
-| cline | cline auto-approves by default, so we pass `--auto-approve false` — a write then needs an approval the closed stdin denies |
-| goose | goose runs tools autonomously by default, so we set `GOOSE_MODE=approve` — a tool call then needs an approval the closed stdin denies |
-| kimi | `-y`/`--yolo` and `--auto` are never passed, so approval mode stays interactive and a write needs an approval the closed stdin can't give (a user's own kimi config could still relax this) |
+| cursor | `--mode ask` (its read-only Q&A mode) + `--sandbox enabled`. `--trust` is required for it to run headless at all, and is not `--force`; `-f`/`--force`/`--yolo` are never passed |
+| kilo | `--auto` is never passed, so a write needs an approval the closed stdin can't give (a user's own kilo config could still relax this) — UNVERIFIED, not installed here, so treat as untested |
+| cline | cline auto-approves by default, so we pass `--auto-approve false` — UNVERIFIED against the bait |
+| goose | goose runs tools autonomously by default, so we set `GOOSE_MODE=approve` — UNVERIFIED against the bait |
+| kimi | `-y`/`--yolo` and `--auto` are never passed — UNVERIFIED against the bait |
+
+**The closed stdin is not enforcement.** Until v0.8.0 the table above leaned on
+it: a write would raise a permission prompt, and nothing could answer a prompt on
+a closed stdin. A write-bait run measured that as false. Given a throwaway git
+repo as cwd and a plain request to create a file, **five of seven installed
+advisors created it** — claude, opencode, hermes, grok and cursor. Nothing ever
+asked, because those CLIs run tool calls unattended in headless mode; the gate
+never fired. Only codex (OS sandbox) and agy (auto-denied tools) held.
+
+Every write-stop in the table is therefore a real per-CLI mechanism now, and
+`tests/test_advice_only.py` guards it two ways: a structural check that no
+dispatch arm loses its flag (runs everywhere, costs nothing) and the live bait
+itself behind `CONSILIUM_LIVE_BAIT=1`. The live test runs two probes per advisor
+— a trivial question that must come back answered, then the bait — because a
+clean tree proves nothing about an advisor that never started. Re-run it after
+any upstream CLI upgrade: a renamed or newly-ignored flag reopens the hole
+silently while the dispatch table still looks correct. The four agents marked
+UNVERIFIED are not installed on the machine where this was measured; their rows
+are reasoning, not evidence.
+
+`bin/consult.ps1` carries the same flags, and the structural test asserts they
+stay in step with the bash port (including the version string, since the ports
+having drifted is how the gap was found). Those PowerShell dispatches have NOT
+been executed — there is no `pwsh` on the machine where this was developed — so
+treat them as reviewed-but-unrun until someone runs the bait on Windows.
 
 Guaranteed for every advisor: consilium never passes
 `--dangerously-skip-permissions` (or any equivalent), and the advisor preamble
 tells the advisor to advise only — do not create, modify, or delete files. All
-real edits stay with the hub.
+real edits stay with the hub. The preamble is a request, not a control: the bait
+is deliberately sent with `--raw` (no preamble) so a polite refusal cannot be
+mistaken for an enforced one.
 
 **A subtlety worth stating** (surfaced by a peer review of the v0.6.0 agents): the
 closed-stdin guard only stops an advisor that *asks* before acting. A fully

@@ -14,7 +14,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Version  = '0.7.2'
+$Version  = '0.8.0'
 $Prog     = 'consult'
 $Agents   = @('claude', 'agy', 'hermes', 'opencode', 'codex', 'grok', 'pi', 'cursor', 'kilo', 'cline', 'goose', 'kimi')
 $Preamble = 'You are a peer AI advisor consulted by another agent. Give honest, direct analysis. Advice only — do not modify, create, or delete files. Reply with your written analysis as plain text — that written answer is the entire deliverable.'
@@ -374,7 +374,31 @@ if (-not $raw -and -not $codeDir -and ($agent -eq 'agy' -or $agent -eq 'grok')) 
 $cmdArgs = @()
 switch ($agent) {
     'claude' {
-        $cmdArgs += '-p'
+        # Measured on the bash port: a plain `claude -p` advisor ACTUALLY WROTE a
+        # file into the working tree — the closed stdin never fired, because
+        # nothing asked. --setting-sources "" removes the hub's CLAUDE.md (the
+        # pollution fix) but ALSO drops any permissions.deny the user had, so the
+        # deny list is restored explicitly from a consilium-owned settings file.
+        # NOT --disallowedTools as the primary path: it is variadic and swallows
+        # the following prompt, turning the consultation into a silent no-op.
+        $claudeSettings = if ($env:CONSILIUM_CLAUDE_SETTINGS) { $env:CONSILIUM_CLAUDE_SETTINGS } else { Join-Path (Get-HomeDir) '.consilium' 'claude-advisor.json' }
+        if (-not (Test-Path -LiteralPath $claudeSettings)) {
+            try {
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $claudeSettings) | Out-Null
+                '{ "permissions": { "deny": ["Edit", "Write", "NotebookEdit", "Bash", "Task"] } }' |
+                    Set-Content -LiteralPath $claudeSettings -Encoding utf8
+            } catch {}
+        }
+        $cmdArgs += @('-p', '--setting-sources', '')
+        if (Test-Path -LiteralPath $claudeSettings) {
+            $cmdArgs += @('--settings', $claudeSettings)
+        } else {
+            # FAIL CLOSED: --setting-sources "" alone loads NO deny rules at all,
+            # which is strictly more permissive than an untouched claude. The
+            # variadic flag must precede a single-value one so it cannot eat the prompt.
+            Write-WarnMsg "claude: could not create $claudeSettings; falling back to command-line deny flags"
+            $cmdArgs = @('-p', '--disallowedTools', 'Edit,Write,NotebookEdit,Bash,Task', '--setting-sources', '')
+        }
         if ($doContinue) { $cmdArgs += '-c' }
         if ($model)   { $cmdArgs += @('--model', $model) }
         if ($codeDir) { $cmdArgs += @('--add-dir', $codeDir) }
@@ -418,21 +442,40 @@ switch ($agent) {
     'hermes' {
         # Nous Research Hermes Agent: one-shot via `hermes chat -q "<prompt>"`.
         # All flags precede -q so the prompt is consumed as -q's value.
-        $cmdArgs += 'chat'
+        # Measured on the bash port: hermes ACTUALLY WROTE a file into the tree,
+        # and echoed the ENTIRE prompt + banner + session hints to stdout, which
+        # consult records as "the answer". -Q leaves only the answer;
+        # --ignore-rules drops AGENTS.md/SOUL.md/memory injection so the advisor
+        # does not run the hub's instructions; -t replaces the enabled toolset
+        # list, so omitting file/terminal/code_execution removes the write tools.
+        $hermesToolsets = if ($env:CONSILIUM_HERMES_TOOLSETS) { $env:CONSILIUM_HERMES_TOOLSETS } else { 'web' }
+        $cmdArgs += @('chat', '-Q', '--ignore-rules', '-t', $hermesToolsets)
         if ($model)   { $cmdArgs += @('--model', $model) }
         if ($doContinue) { $cmdArgs += '-c' }
-        if ($codeDir) { Write-WarnMsg 'hermes: --code is not supported (no --add-dir flag); ignoring' }
+        if ($codeDir) { Write-WarnMsg 'hermes: --code is deliberately not wired — its write tools are only held back by the -t toolset list, which is not a sandbox; use --context or a pipe' }
         $cmdArgs += @('-q', $prompt)
     }
     'opencode' {
-        $cmdArgs += 'run'
+        # Measured on the bash port: opencode's default `build` agent ACTUALLY
+        # WROTE a file into the tree — it runs tool calls unattended, so the
+        # closed stdin never fired. `plan` is opencode's built-in read-only agent.
+        $ocAgent = if ($env:CONSILIUM_OPENCODE_AGENT) { $env:CONSILIUM_OPENCODE_AGENT } else { 'plan' }
+        $cmdArgs += @('run', '--agent', $ocAgent)
         if ($doContinue) { $cmdArgs += '-c' }
         if ($model)   { $cmdArgs += @('-m', $model) }
-        if ($codeDir) { Write-WarnMsg 'opencode: --code is not wired in the dispatch table; ignoring' }
+        if ($codeDir) { Write-WarnMsg 'opencode: --code is deliberately not wired (its write-stop is the plan agent tool list, not a sandbox); use --context or a pipe' }
         $cmdArgs += $prompt
     }
     'codex' {
-        $cmdArgs += @('exec', '--sandbox', 'read-only')
+        # --skip-git-repo-check fixes a SILENT, TOTAL failure: `codex exec` aborts
+        # with "Not inside a trusted directory and --skip-git-repo-check was not
+        # specified" whenever cwd is not a git repo, which is exactly how council
+        # spawns its members — so the OpenAI member produced an empty answer in
+        # every council run and was dropped from the panel. It skips a trust
+        # check only; --sandbox read-only (the one OS-level write-stop in this
+        # table, and the only dispatch that passed the write-bait untouched)
+        # is unaffected.
+        $cmdArgs += @('exec', '--sandbox', 'read-only', '--skip-git-repo-check')
         if ($doContinue) { Write-WarnMsg 'codex: --continue is not supported in exec mode; ignoring' }
         if ($model)   { $cmdArgs += @('-m', $model) }
         if ($codeDir) { $cmdArgs += @('-C', $codeDir) }
@@ -441,7 +484,11 @@ switch ($agent) {
     'grok' {
         # xAI Grok CLI (superagent-ai/grok-cli): `-p`/`--single` takes the prompt as
         # its value, prints the answer to stdout, and exits (default output plain).
-        # Flags verified against `grok --help`.
+        # Flags verified against `grok --help`. Measured on the bash port: a plain
+        # `grok -p` advisor ACTUALLY WROTE a file into the tree; its default
+        # permission mode did not gate the write. --deny takes exactly one value
+        # per occurrence, so it cannot swallow the prompt.
+        $cmdArgs += @('--deny', 'Write', '--deny', 'Edit', '--deny', 'Bash')
         if ($model)   { $cmdArgs += @('-m', $model) }
         if ($doContinue) { $cmdArgs += '-c' }
         if ($codeDir) { $cmdArgs += @('--cwd', $codeDir) }
@@ -460,12 +507,20 @@ switch ($agent) {
         # Cursor CLI (binary cursor-agent, or a bare `agent` alias): `-p` print mode
         # DEFAULTS to stream-json, so pin --output-format text for a clean answer.
         # Continue is --resume (there is no --continue). Verified against
-        # `cursor-agent --help`. Advice-safe: -f/--force is never passed, so a
-        # write/bash tool needs an approval the closed stdin can't give.
-        $cmdArgs += @('-p', '--output-format', 'text')
+        # `cursor-agent --help`.
+        # --trust: WITHOUT it cursor aborts with "Workspace Trust Required" and
+        #   prints NOTHING — cursor had never worked as an advisor at all. It
+        #   answers the trust prompt only; it is not --force/--yolo.
+        # --mode ask: cursor's own help says -p "has access to all tools,
+        #   including write and shell", and a plain `-p --trust` advisor ACTUALLY
+        #   WROTE a file into the tree in the bash port's write-bait. `ask` is its
+        #   read-only Q&A mode.
+        # --sandbox enabled: second belt for any shell tool left registered.
+        # -f/--force/--yolo are never passed.
+        $cmdArgs += @('-p', '--output-format', 'text', '--trust', '--mode', 'ask', '--sandbox', 'enabled')
         if ($model)   { $cmdArgs += @('--model', $model) }
         if ($doContinue) { $cmdArgs += '--resume' }
-        if ($codeDir) { Write-WarnMsg 'cursor: no working-directory flag; --code ignored (cd into the dir before consulting).' }
+        if ($codeDir) { Write-WarnMsg 'cursor: --code is deliberately not wired — --add-dir exists but also loads that repo .cursor rules/MCP into the advisor; use --context or a pipe.' }
         $cmdArgs += $prompt
     }
     'kilo' {

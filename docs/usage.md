@@ -142,14 +142,18 @@ vague reply back.
 ## Worth keeping in mind
 
 - **You stay in control.** The other AI returns text and is there to advise, not
-  act — but how firmly that's *enforced* varies by advisor. `codex` is hard-sandboxed
-  (`--sandbox read-only`); `cline` and `goose` are forced into an approval gate
-  (`--auto-approve false`, `GOOSE_MODE=approve`) that the closed stdin then denies;
-  `claude`, `kimi`, `kilo` and `cursor` fall back to your own permission config; `pi`
-  has no gate at all, so keep sensitive files out of its working folder. consilium's
-  *own* flags never grant permissions — but `--raw` sends your question to the advisor
-  verbatim and `--model` forwards its value as a token (a value beginning with `-` is
-  rejected), so those two are your responsibility. Every edit stays between you and
+  act — and since v0.8.0 that is *enforced* by a real mechanism per advisor rather
+  than requested in the prompt. `codex` is hard-sandboxed (`--sandbox read-only`),
+  `cursor` runs its read-only `ask` mode, `opencode` its read-only `plan` agent,
+  `hermes` gets a toolset list with no file or terminal tools, `grok` explicit deny
+  rules, `claude` a consilium-owned deny list, and `agy`'s tools are auto-denied
+  headless. All seven were verified by asking them outright to create a file with
+  the advice-only preamble removed; none did. `pi`, `kilo`, `cline` and `kimi` were
+  not verified that way, so keep sensitive files out of their working folder.
+  consilium's *own* flags never grant permissions — but `--raw` sends your question
+  to the advisor verbatim and `--model` forwards its value as a token (a value
+  beginning with `-` is rejected), so those two are your responsibility. Every edit
+  stays between you and
   Claude.
 - **Pick an independent one.** Choose a different provider than the one you're using
   — `codex` (OpenAI) or `agy` (Gemini) rather than a second Claude, which mostly
