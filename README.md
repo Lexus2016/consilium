@@ -2,7 +2,12 @@
 
 **English** · [Українська](README.uk.md) · [Русский](README.ru.md)
 
-> Let one AI ask a different AI when it isn't sure.
+**Get a second opinion from the coding agents already installed on your machine.**
+
+`consult` is a local CLI for one advisor, an independent panel, or a code-audit
+council. It uses the agents' existing sign-ins and model settings.
+
+[Install](#install-it-just-ask-your-ai) · [Usage](docs/usage.md) · [Contribute](CONTRIBUTING.md) · [Report a bug](https://github.com/Lexus2016/consilium/issues/new/choose)
 
 ## What this is, in one breath
 
@@ -37,10 +42,10 @@ what you *meant* to write, not what's actually on the page. Hand it to someone f
 a different class — who studied from different notes and has no reason to agree
 with you — and they spot the mistake in five seconds.
 
-An AI has the same blind spot. Ask the same model to "double-check," and it mostly
-nods along with itself. Ask a *rival* model from another company — trained
-differently, with no stake in the first answer — and it actually pushes back. That
-pushback is the whole point. It's where the useful catches come from.
+A separate review can reveal assumptions the first pass missed. Using another
+model or provider may give you a different perspective, but it does not guarantee
+independence, disagreement or correctness. Verify advice against the original code
+and tests.
 
 So the rule is short: **ask someone other than the AI you're already working
 with.**
@@ -66,8 +71,8 @@ from the model on the right.
 | `goose`    | Goose (the model you set)      | Block         |
 | `kimi`     | Kimi                           | Moonshot AI   |
 
-Pick a row that *isn't* the AI you're already using. A second Claude mostly agrees
-with the first.
+Choose the actual model and provider deliberately. Different CLI names can still
+use the same underlying model; `consult --list` does not prove provider diversity.
 
 ## When a second opinion is worth it
 
@@ -92,12 +97,13 @@ midnight.
 
 ## What you need first
 
-consilium is an add-on, not an app you open on its own. Before it's any use you
-need **two terminal coding agents** installed and signed in: one that *asks*, and a
-different one that *answers*. Claude Code, Codex, `agy`, and OpenCode all qualify.
+For a direct `consult <agent>` call, you need that advisor CLI installed and
+signed in. To have one coding agent ask another, install and sign in to both.
+Agent-assisted use does not require a separate consilium API key.
 
-Never used a terminal coding agent? Start there first — consilium only makes sense
-once you have two of them, because the whole idea is one asking the other.
+The shell launcher targets macOS, Linux, WSL and Git Bash. The optional council
+requires Python 3.10+. Native PowerShell has a separate `bin/consult.ps1` launcher;
+see [usage](docs/usage.md).
 
 ## Install it (just ask your AI)
 
@@ -109,15 +115,27 @@ Paste this to your assistant (Claude Code, Codex, OpenCode, or Antigravity):
 
 That's it. You only need the assistants you actually plan to ask.
 
-Prefer to do it by hand? One command:
+Prefer to do it by hand? Clone and inspect the installer, then install the CLI:
 
 ```sh
-./install.sh --clients   # puts `consult` on your PATH and syncs the skills + hub block
+git clone https://github.com/Lexus2016/consilium.git
+cd consilium
+./install.sh
+export PATH="$HOME/.local/bin:$PATH"  # default install location, current shell
+consult --help
+consult --list
 ```
 
-Then open a fresh session and run `consult --list` to confirm it's there. Already
-installed? From your clone, `git pull && ./install.sh --clients` pulls the latest
-and re-syncs everything.
+The default installation symlinks to this checkout, so keep it in place.
+`--list` checks installed executables, not authentication or live model access.
+
+To opt into agent integration, review [clients/README.md](clients/README.md), then
+run `./install.sh --clients`. This also writes managed instructions and skills to
+supported agent directories. A fresh agent session may be needed to load them.
+
+For updates, review the incoming changes, run `git pull --ff-only` from this
+checkout, and rerun the installer with the same options you chose initially.
+Real consultations send context to the selected provider and can incur charges.
 
 ## Use it — three ways
 
@@ -164,8 +182,10 @@ before you call something done.
 `consult <agent>` gives you one second opinion. For a high-stakes **code audit**,
 `consult council` runs a whole panel: several agents on different providers each
 audit the code independently, a separate agent reconciles them into one answer, and
-every finding is **mechanically verified against its `file:line`** — a fabricated or
-out-of-range citation is flagged, so hallucinations don't slip through. ("Different
+each emitted `SOURCE:` citation is **checked against the files and line ranges
+actually supplied to the panel**. Unknown paths, omitted files, invalid line ranges
+and malformed citations are flagged. A valid location does not prove the finding
+is correct, and this check does not catch every hallucination. ("Different
 providers" means different CLI front-ends, not guaranteed-different models: two
 Claude-backed CLIs — or `hermes` and `kimi` both routed to Moonshot — still count as
 diverse, so pick advisors you know run on different models.)
@@ -191,34 +211,13 @@ boundary. It returns located, verified findings; you apply them (it never edits
 files). It ends with a single `COUNCIL STATUS: COMPLETE | INCOMPLETE` line — and a matching exit code — so your assistant sees at a glance whether to act on the answer or come back with a follow-up. The council needs `python3`; the core `consult` stays a zero-dependency
 shell tool, so this is opt-in.
 
-## How it compares — consilium vs Fugu vs OpenRouter Fusion
+## Where this fits
 
-Fugu and OpenRouter Fusion are hosted services that hide a panel of models behind one
-paid endpoint. consilium keeps the panel in **your** hands — local, transparent, and
-verifiable, using the AI tools you already have.
-
-| | **consilium** (this project) | **Sakana Fugu** | **OpenRouter Fusion** |
-|---|---|---|---|
-| What it is | A local CLI for a second opinion from a *different* AI | A hosted orchestrator **model** | A hosted multi-model **API** |
-| Where it runs | Your machine, your own signed-in AI CLIs | Vendor cloud, one endpoint | Vendor cloud, one endpoint |
-| Models per question | You choose: one, or an independent panel | A pool the model picks (hidden) | 3–5 models in parallel |
-| Who synthesizes | **You / your agent** (the hub), with full task context | The trained model, internally | A judge model returns structured analysis; your model writes the final answer |
-| Transparency | Open — you can read each advisor's own answer | Hidden machinery; one answer out | Panel answers + a structured judge report |
-| Verifies findings against your code | Yes — every finding checked against `file:line` | Internal / unspecified | No |
-| Touches your files | Advice only; every edit stays with the hub | Text API | Text API |
-| Dependencies | Zero-dependency shell core (+ `python3` for the council) | Vendor API | Vendor API (OpenAI-compatible) |
-| Cost | Only the model calls you already pay for — no markup | One bundled bill — flat-rate ($20–$200/mo) or metered | Sum of every panel call + the judge (~3× a single call) |
-| Best for | Code/design review where you stay in control and verify | One-call hidden orchestration | High-stakes research/critique via API |
-
-**Quality vs efficiency — where each wins and what it pays for:**
-
-- **consilium** — *Strength:* real cross-vendor independence and findings checked against your actual code; you pay only for calls you already make. *Weakness:* quality depends on the advisors you have installed and on the hub steering them — there is no built-in auto-routing, so a careless question gets a careless panel.
-- **Sakana Fugu** — *Strength:* a trained orchestrator picks, runs, and verifies the models for you, so one call can beat a single frontier model. *Weakness:* the machinery is hidden and the fan-out is costly (a request can burn 4–6× the tokens), with vendor lock-in and no EU availability.
-- **OpenRouter Fusion** — *Strength:* a 3–5 model panel plus a judge in one drop-in API call, strong on hard research and critique. *Weakness:* you pay every panel call plus the judge (~3× a single call) and add latency, with no check against your real codebase.
-
-The short version: Fugu and Fusion sell **convenience** (one endpoint, hidden machinery,
-their bill); consilium gives **control** (your machine, your providers, every answer
-visible, findings checked against the real code).
+consilium is useful when you want to choose your advisors, inspect their separate
+answers and keep edits in your main workflow. It does not automatically choose the
+cheapest model, guarantee different providers, or establish that a finding is true.
+The CLI runs locally; the selected advisors can still send your context to remote
+model providers. Their normal billing and data-handling policies apply.
 
 ## Good to know
 
@@ -248,6 +247,13 @@ visible, findings checked against the real code).
   prompt is passed to the advisor as a command-line argument. On a multi-user host
   this text can show up in `ps` / `/proc` listings. Strip secrets from context files
   and diffs, not just from the question itself.
+
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers offline checks and the boundaries of live
+advisor tests. Use the [issue forms](https://github.com/Lexus2016/consilium/issues/new/choose)
+for reproducible bugs and focused feature requests. Remove credentials, proprietary
+code and session content before sharing logs.
 
 ## Read more
 
